@@ -48,7 +48,9 @@ class SLM(QDialog):
     mask3d_height = 1.0
 
     def __init__(self, d={}):
-        super().__init__(parent=None, flags=Qt.FramelessWindowHint)
+        super().__init__(
+            parent=None,
+            flags=Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
 
     def load(self, f):
         d = json.load(f)
