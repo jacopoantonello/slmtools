@@ -102,7 +102,7 @@ class SLM(QDialog):
             merge = d
         json.dump(merge, f)
 
-    def refresh_hologram(self):
+    def refresh_hologram(self, refresh_slm2 = True):
         self.refreshHologramSignal.emit()
         # flat file overwrites hologram dimensions
         if self.flat_file is None:
@@ -1034,19 +1034,12 @@ class Control(QDialog):
                 slider.blockSignals(True)
                 slider.setValue(fto100(r, amp))
                 slider.blockSignals(False)
-                slm.angle_xy[axis] = r
-                slm.refresh_hologram()
-            return f
-
-        def update_amp(spinbox, slider, le, i):
-            def f():
-                amp = float(le.text())
-                spinbox.setRange(-amp, amp)
-                spinbox.setValue(spinbox.value())
-                slider.setValue(fto100(slm.aberration[i, 0], le))
+                self.slm.angle_xy[axis] = r
+                self.slm.refresh_hologram()
             return f
 
         def update_spinbox(s, amp):
+            print("update grating coeff spinbox")
             def f(t):
                 maxrad = float(amp)
                 s.setValue(t/multiplier*(2*maxrad) - maxrad)
