@@ -17,12 +17,15 @@ from PyQt5.QtWidgets import QDialog, QLabel, QLineEdit, QPushButton, QComboBox
 from PyQt5.QtWidgets import QGroupBox, QGridLayout, QCheckBox, QVBoxLayout
 from PyQt5.QtWidgets import QApplication, QShortcut, QSlider, QDoubleSpinBox
 from PyQt5.QtWidgets import QWidget, QFileDialog, QScrollArea, QMessageBox
+from PyQt5.QtCore import pyqtSignal
+
 from qtconsole.rich_jupyter_widget import RichJupyterWidget
 from qtconsole.inprocess import QtInProcessKernelManager
 
-from slm import version
-from slm.ext.czernike import RZern
-
+#from slm import version
+import version
+#from slm.ext.czernike import RZern
+from ext.czernike import RZern
 
 """SLM - spatial light modulator (SLM) controller.
 """
@@ -32,12 +35,12 @@ class SLM(QDialog):
     flat_file = None
     flat = None
     flat_on = 0.0
-    hologram_geometry = [0, 0, 200, 100]
+    hologram_geometry = [0, 0, 400, 200]
     rzern = None
     arr = None
     qim = None
     pupil_xy = [0.0, 0.0]
-    pupil_rho = 20.0
+    pupil_rho = 50.0
     angle_xy = [0, 0]
     aberration = np.zeros((15, 1))
     wrap_value = 0xff
@@ -46,7 +49,8 @@ class SLM(QDialog):
     mask3d_on = 0.0
     mask3d_radius = 0.6
     mask3d_height = 1.0
-
+    all_phase=0
+    refreshHologramSignal=pyqtSignal()
     def __init__(self, d={}):
         super().__init__(
             parent=None,
@@ -70,11 +74,10 @@ class SLM(QDialog):
         self.mask3d_radius = d['mask3d_radius']
         self.mask3d_height = d['mask3d_height']
         self.angle_xy = d['angle_xy']
-        self.refresh_hologram()
         self.set_flat(d['flat_file'])
         self.flat_on = d['flat_on']
-        self.update()
-
+        
+        self.refresh_hologram()
         return d
 
     def save(self, f, merge=None):
@@ -100,6 +103,7 @@ class SLM(QDialog):
         json.dump(merge, f)
 
     def refresh_hologram(self):
+        self.refreshHologramSignal.emit()
         # flat file overwrites hologram dimensions
         if self.flat_file is None:
             # [0, 1]
@@ -152,14 +156,15 @@ class SLM(QDialog):
             self.theta = np.arctan2(self.yv, self.xv)
             self.rho = np.sqrt(self.xv**2 + self.yv**2)
 
-        self.make_grating()
-        assert(np.all(np.isfinite(self.grating)))
+
         self.make_phi2d()
         assert(np.all(np.isfinite(self.phi2d)))
         self.make_phi3d()
         assert(np.all(np.isfinite(self.phi3d)))
         self.make_phi()
-        assert(np.all(np.isfinite(self.phi)))
+        assert(np.all(np.isfinite(self.phi)))        
+        self.make_grating()
+        assert(np.all(np.isfinite(self.grating)))
 
         def printout(t, x):
             if isinstance(x, np.ndarray):
@@ -183,6 +188,9 @@ class SLM(QDialog):
             self.mask2d_on*self.phi2d +
             self.mask3d_on*self.phi3d +
             self.grating)
+        #!!! not clean
+        self.all_phase = phase.copy()
+        
         phase /= (2*np.pi)  # phase in waves
         # all in waves
         gray = background + phase
@@ -229,6 +237,8 @@ class SLM(QDialog):
         tt[self.rho >= 1.0] = 0
         self.grating = np.flipud(tt)
 
+        assert((np.flipud(self.grating)[self.rho>=1.0]==0).all())
+        
     def make_phi(self):
         # [-pi, pi] principal branch
         phi = np.pi + self.rzern.eval_grid(self.aberration)
@@ -348,6 +358,127 @@ class SLM(QDialog):
             qp.end()
 
 
+class DoubleSLM(SLM):
+    def __init__(self):
+        super().__init__()
+        self.slm2 = SLM()
+        self.slm2.refreshHologramSignal.connect( 
+                lambda: self.refresh_hologram(refresh_slm2=False))
+        
+    def refresh_hologram(self,refresh_slm2 = True):
+        """rewrite refresh hologram for double SLM"""
+        if refresh_slm2:
+            self.slm2.refresh_hologram()
+            print("refresh hologram from slm1")
+        else:
+            print("refresh hologram from slm2")
+        print("Grating values, slm 1 and 2:",self.angle_xy,self.slm2.angle_xy)
+        if self.flat_file is None:
+            # [0, 1]
+            self.flat = 0.0
+        else:
+            self.copy_flat_shape()
+
+        self.setGeometry(*self.hologram_geometry)
+        self.setFixedSize(
+            self.hologram_geometry[2], self.hologram_geometry[3])
+
+        if (
+                self.arr is None or
+                self.qim is None or
+                self.arr.shape[0] != self.hologram_geometry[3] or
+                self.arr.shape[1] != self.hologram_geometry[2]):
+
+            print('refresh_hologram(): ALLOCATING arr & qim')
+            self.arr = np.ndarray(
+                shape=(self.hologram_geometry[3], self.hologram_geometry[2]),
+                dtype=np.uint32)
+            self.qim = QImage(
+                self.arr.data, self.arr.shape[1], self.arr.shape[0],
+                QImage.Format_RGB32)
+
+            self.rzern = None
+
+        if self.rzern is None or self.aberration.size != self.rzern.nk:
+            print('refresh_hologram(): ALLOCATING Zernike')
+
+            def make_dd(rho, n, x):
+                scale = (n/2)/rho
+                dd = np.linspace(-scale, scale, n)
+                dd -= np.diff(dd)[0]*x
+                return dd
+
+            nnew = int((-3 + sqrt(9 - 4*2*(1 - self.aberration.size)))/2)
+            self.rzern = RZern(nnew)
+            dd1 = make_dd(
+                self.pupil_rho,
+                self.hologram_geometry[2],
+                self.pupil_xy[0])
+            dd2 = make_dd(
+                self.pupil_rho,
+                self.hologram_geometry[3],
+                self.pupil_xy[1])
+            self.xv, self.yv = np.meshgrid(dd1, dd2)
+            self.rzern.make_cart_grid(self.xv, self.yv)
+
+            self.theta = np.arctan2(self.yv, self.xv)
+            self.rho = np.sqrt(self.xv**2 + self.yv**2)
+
+        self.make_phi2d()
+        assert(np.all(np.isfinite(self.phi2d)))
+        self.make_phi3d()
+        assert(np.all(np.isfinite(self.phi3d)))
+        self.make_phi()
+        assert(np.all(np.isfinite(self.phi)))
+        self.make_grating()
+        assert(np.all(np.isfinite(self.grating)))
+
+        def printout(t, x):
+            if isinstance(x, np.ndarray):
+                print('{} [{:g}, {:g}] {:g}'.format(
+                    t, x.min(), x.max(), x.mean()))
+            else:
+                print(t + ' [0.0, 0.0] 0.0')
+
+        print('refresh_hologram(): repaint')
+
+        printout('flat', self.flat)
+        printout('phi', self.phi)
+        printout('phi2d', self.phi2d)
+        printout('phi3d', self.phi3d)
+
+        # [0, 1] waves
+        background = self.flat_on*self.flat
+        # [-pi, pi] principal branch rads (zero mean)
+        phase = (
+            self.phi +
+            self.mask2d_on*self.phi2d +
+            self.mask3d_on*self.phi3d +
+            self.grating + self.slm2.all_phase)
+        #Adding second pupil
+        #phase += self.slm2.all_phase
+        
+        phase /= (2*np.pi)  # phase in waves
+        # all in waves
+        gray = background + phase
+        printout('gray', gray)
+        gray -= np.floor(gray.min())
+        assert(gray.min() >= -1e-9)
+        gray *= self.wrap_value
+        printout('gray', gray)
+        gray %= self.wrap_value
+        printout('gray', gray)
+        assert(gray.min() >= 0)
+        assert(gray.max() <= 255)
+        gray = gray.astype(np.uint8)
+        self.arr[:] = gray.astype(np.uint32)*0x010101
+        self.update()
+    def load(self):
+        pass
+    def save(self):
+        pass
+    
+    
 class PhaseDisplay(QWidget):
     # TODO pthread me or the SLM class itself
 
@@ -414,6 +545,7 @@ class PhaseDisplay(QWidget):
             qp.end()
 
 
+        
 class Control(QDialog):
     # TODO refactor and cleanup awful Qt code
 
@@ -904,7 +1036,6 @@ class Control(QDialog):
                 slider.blockSignals(False)
                 slm.angle_xy[axis] = r
                 slm.refresh_hologram()
-                slm.update()
             return f
 
         def update_amp(spinbox, slider, le, i):
@@ -982,35 +1113,45 @@ class Control(QDialog):
 
         self.group_file = g
 
-    def __init__(self, slm, settings):
+    def __init__(self, slm, settings,is_parent=True):
+        """Subclass for a control GUI.
+        Parameters:
+            slm: SLM instance
+            settings: dict, saved settings
+            is_parent: bool. Useful in the case of doublepass to determine
+                for instance which widget determines the overall geometry"""
         super().__init__(parent=None)
         self.setWindowTitle(
             'SLM ' + version.__version__ + ' ' + version.__date__)
         QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
 
         self.settings = settings
-
+        self.slm = slm
+        
         if 'window' in settings.keys():
             self.setGeometry(
                 settings['window'][0], settings['window'][1],
                 settings['window'][2], settings['window'][3])
 
-        self.make_geometry_tab(slm)
-        self.make_pupil_tab(slm)
-        self.make_flat_tab(slm)
-        self.make_wrap_tab(slm)
-        self.make_2d_tab(slm)
-        self.make_3d_tab(slm)
+        self.make_geometry_tab(self.slm)
+        self.make_pupil_tab(self.slm)
+        self.make_flat_tab(self.slm)
+        self.make_wrap_tab(self.slm)
+        self.make_2d_tab(self.slm)
+        self.make_3d_tab(self.slm)
         self.make_phase_tab()
-        self.make_grating_tab(slm)
-        self.make_aberration_tab(slm, self.phase_display)
-        self.make_file_tab(slm)
+        self.make_grating_tab(self.slm)
+        self.make_aberration_tab(self.slm, self.phase_display)
+        self.make_file_tab(self.slm)
 
         top = QGridLayout()
-        top.addWidget(self.group_geometry, 0, 0, 1, 2)
+        if is_parent:
+            top.addWidget(self.group_geometry, 0, 0, 1, 2)
         top.addWidget(self.group_pupil, 1, 0)
         top.addWidget(self.group_wrap, 1, 1)
-        top.addWidget(self.group_flat, 2, 0)
+        
+        if is_parent:
+            top.addWidget(self.group_flat, 2, 0)
         top.addWidget(self.group_2d, 3, 0)
         top.addWidget(self.group_3d, 4, 0)
         top.addWidget(self.group_phase, 0, 2, 2, 1)
@@ -1031,7 +1172,38 @@ class Control(QDialog):
     def keyPressEvent(self, event):
         pass
 
+class DoubleControl(QDialog):
+    
+    close_slm = True
+    
+    def __init__(self, double_slm, settings):
+        super().__init__(parent=None)
+        self.setWindowTitle(
+            'SLM ' + version.__version__ + ' ' + version.__date__)
+        QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
 
+        self.settings = settings
+
+        if 'window' in settings.keys():
+            self.setGeometry(
+                settings['window'][0], settings['window'][1],
+                settings['window'][2], settings['window'][3])
+        
+        self.double_slm = double_slm
+        
+        self.control1 = Control(self.double_slm,settings)
+        self.control2 = Control(self.double_slm.slm2,{})
+        top = QGridLayout()
+        top.addWidget(self.control1,0,0)
+        top.addWidget(self.control2,0,1)
+        self.setLayout(top)
+
+    def closeEvent(self, event):
+        if self.close_slm:
+            self.double_slm.slm2.close()
+            self.double_slm.close()
+        super().close()
+        
 class Console(QDialog):
 
     def __init__(self, slm, control):
@@ -1076,6 +1248,7 @@ class Console(QDialog):
 
 
 if __name__ == '__main__':
+    DOUBLE = True
     app = QApplication(sys.argv)
 
     args = app.arguments()
@@ -1091,7 +1264,10 @@ if __name__ == '__main__':
         metavar='JSON',
         help='Load a previous configuration file')
     args = parser.parse_args(args[1:])
-    slm = SLM()
+    if DOUBLE:
+        slm = DoubleSLM()
+    else:
+        slm=SLM()
     slm.show()
     slm.refresh_hologram()
 
@@ -1100,8 +1276,10 @@ if __name__ == '__main__':
         args.load.close()
     else:
         d = {}
-
-    control = Control(slm, d)
+    if DOUBLE:
+        control = DoubleControl(slm, d)
+    else:
+        control = Control(slm,d)
     control.show()
 
     if args.console:
