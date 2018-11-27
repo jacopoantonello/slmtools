@@ -58,8 +58,28 @@ class SLM(QDialog):
         self.mask3d_height = 1.0
         self.all_phase=0
 
-    def load(self, f):
-        d = json.load(f)
+    def parameters2dict(self):
+        """Stores all relevant parameters in a dictionary. Useful for saving"""
+        d = {
+            'hologram_geometry': self.hologram_geometry,
+            'pupil_xy': self.pupil_xy,
+            'pupil_rho': self.pupil_rho,
+            'aberration': self.aberration.tolist(),
+            'wrap_value': self.wrap_value,
+            'mask2d_on': self.mask2d_on,
+            'mask2d_sign': self.mask2d_sign,
+            'mask3d_on': self.mask3d_on,
+            'mask3d_radius': self.mask3d_radius,
+            'mask3d_height': self.mask3d_height,
+            'flat_file': self.flat_file,
+            'flat_on': self.flat_on,
+            'angle_xy': self.angle_xy
+            }
+        return d
+    
+    def dict2parameters(self,d):
+        """Sets each SLM parameter value according to the ones stored in dictionary
+        d"""
         self.hologram_geometry = d['hologram_geometry']
         pupil_xy = d['pupil_xy']
         if pupil_xy[0] != self.pupil_xy[0] or pupil_xy[1] != self.pupil_xy[1]:
@@ -79,25 +99,14 @@ class SLM(QDialog):
         self.set_flat(d['flat_file'])
         self.flat_on = d['flat_on']
         
+    def load(self, f):
+        d = json.load(f)
+        self.dict2parameters(d)
         self.refresh_hologram()
         return d
-
+    
     def save(self, f, merge=None):
-        d = {
-            'hologram_geometry': self.hologram_geometry,
-            'pupil_xy': self.pupil_xy,
-            'pupil_rho': self.pupil_rho,
-            'aberration': self.aberration.tolist(),
-            'wrap_value': self.wrap_value,
-            'mask2d_on': self.mask2d_on,
-            'mask2d_sign': self.mask2d_sign,
-            'mask3d_on': self.mask3d_on,
-            'mask3d_radius': self.mask3d_radius,
-            'mask3d_height': self.mask3d_height,
-            'flat_file': self.flat_file,
-            'flat_on': self.flat_on,
-            'angle_xy': self.angle_xy
-            }
+        d = self.parameters2dict()
         if merge:
             merge.update(d)
         else:
@@ -491,11 +500,27 @@ class DoubleSLM(SLM):
     def set_wrap_value(self,wrap_value):
         self.slm2.set_wrap_value(wrap_value)
         super().set_wrap_value(wrap_value)
+            
+    def load(self, f):
+        d = json.load(f)
+        d1 = d["pupil1"]
+        d2 = d["pupil2"]
+        self.slm2.dict2parameters(d2)
+        self.slm2.dict2parameters(d1)
+        self.refresh_hologram()
+        return d
+    
+    def save(self, f, merge=None):
+        d1 = self.parameters2dict()
+        d2 = self.slm2.parameters2dict()
+        d = {"pupil1":d1,
+             "pupil2":d2}
+        if merge:
+            merge.update(d)
+        else:
+            merge = d
+        json.dump(merge, f)
         
-    def load(self):
-        pass
-    def save(self):
-        pass
     
     
 class PhaseDisplay(QWidget):
@@ -1184,7 +1209,9 @@ class Control(QDialog):
             self.setGeometry(
                 settings['window'][0], settings['window'][1],
                 settings['window'][2], settings['window'][3])
-
+            
+        self.is_parent = is_parent
+        
         self.make_geometry_tab(slm)
         self.make_pupil_tab(slm)
         self.make_flat_tab(slm)
@@ -1197,6 +1224,7 @@ class Control(QDialog):
         self.make_file_tab(slm)
 
         top = QGridLayout()
+        self.top = top
         if is_parent: #Single pupil case, we add all the buttons
             top.addWidget(self.group_geometry, 0, 0, 1, 2)
             top.addWidget(self.group_pupil, 1, 0)
@@ -1216,19 +1244,70 @@ class Control(QDialog):
             #top.addWidget(self.group_flat, 2, 0)
             #top.addWidget(self.group_file, 5, 0)
 
-            top.addWidget(self.group_phase, 0, 0, 2, 1)
-            top.addWidget(self.group_pupil, 3, 0)
-            top.addWidget(self.group_grating, 4, 0)
-            top.addWidget(self.group_2d, 5, 0)
-            top.addWidget(self.group_3d, 6, 0)
+            top.addWidget(self.group_phase, 0, 0, 4, 1)
+            top.addWidget(self.group_pupil, 0, 1)
+            top.addWidget(self.group_grating, 1, 1)
+            top.addWidget(self.group_2d, 2, 1)
+            top.addWidget(self.group_3d, 3, 1)
 
-            top.addWidget(self.group_aberration, 0, 2, 7, 3)
+            top.addWidget(self.group_aberration, 4, 0, 2, 2)
         self.setLayout(top)
 
         self.top = top
         self.slm = slm
         # self.resize(QDesktopWidget().availableGeometry().size()*0.5)
 
+    def reinitialize(self,slm):
+        """Useful after loading a new correction file, sets all parameters to
+        correct value"""
+        self.group_geometry.deleteLater()
+        self.group_pupil.deleteLater()
+        self.group_wrap.deleteLater()
+        self.group_flat.deleteLater()
+        self.group_2d.deleteLater()
+        self.group_3d.deleteLater()
+        self.group_phase.deleteLater()
+        self.group_grating.deleteLater()
+        self.group_aberration.deleteLater()
+        self.group_file.deleteLater()
+        
+        self.make_geometry_tab(slm)
+        self.make_pupil_tab(slm)
+        self.make_flat_tab(slm)
+        self.make_wrap_tab(slm)
+        self.make_2d_tab(slm)
+        self.make_3d_tab(slm)
+        self.make_phase_tab()
+        self.make_aberration_tab(slm, self.phase_display)
+        self.make_file_tab(slm)
+        self.make_grating_tab(slm)
+    
+        if self.is_parent: #Single pupil case, we add all the buttons
+            self.top.addWidget(self.group_geometry, 0, 0, 1, 2)
+            self.top.addWidget(self.group_pupil, 1, 0)
+            self.top.addWidget(self.group_wrap, 1, 1)
+            
+            self.top.addWidget(self.group_flat, 2, 0)
+            self.top.addWidget(self.group_2d, 3, 0)
+            self.top.addWidget(self.group_3d, 4, 0)
+            self.top.addWidget(self.group_phase, 0, 2, 2, 1)
+            self.top.addWidget(self.group_grating, 2, 1, 1, 2)
+            self.top.addWidget(self.group_aberration, 3, 1, 3, 2)
+            self.top.addWidget(self.group_file, 5, 0)
+        else:
+            #!!!
+            #top.addWidget(self.group_geometry, 0, 0, 1, 2)            
+            #top.addWidget(self.group_wrap, 1, 1)
+            #top.addWidget(self.group_flat, 2, 0)
+            #top.addWidget(self.group_file, 5, 0)
+            self.top.addWidget(self.group_phase, 0, 0, 4, 1)
+            self.top.addWidget(self.group_pupil, 0, 1)
+            self.top.addWidget(self.group_grating, 1, 1)
+            self.top.addWidget(self.group_2d, 2, 1)
+            self.top.addWidget(self.group_3d, 3, 1)
+
+            self.top.addWidget(self.group_aberration, 4, 0, 2, 2)
+        
     def closeEvent(self, event):
         if self.close_slm:
             self.slm.close()
@@ -1286,13 +1365,64 @@ class DoubleControl(QDialog):
         self.display = MatplotlibWindow(figsize = (8,6))
         self.double_slm.newHologramSignal.connect(self.display.update_array)
     
+    def make_file_tab(self, slm):
+        """Rewriting the file tab to facilitate loading of 2-pupil files"""
+        g = QGroupBox('File')
+        load = QPushButton('load')
+        save = QPushButton('save')
+        l1 = QGridLayout()
+        l1.addWidget(load, 0, 1)
+        l1.addWidget(save, 0, 0)
+        g.setLayout(l1)
+
+        def helper_load():
+            def myf1():
+                fdiag, _ = QFileDialog.getOpenFileName()
+                if fdiag:
+                    try:
+                        with open(fdiag, 'r') as f:
+                            slm.load(f)
+                            self.control1.reinitialize(slm)
+                            self.control2.reinitialize(slm.slm2)
+
+                    except Exception as e:
+                        QMessageBox.information(self, 'Error', str(e))
+
+                    print(fdiag)
+            return myf1
+
+        def helper_save():
+            # self.setGeometry(*self.hologram_geometry)
+            def myf1():
+                curg = self.geometry()
+                fdiag, _ = QFileDialog.getSaveFileName(
+                    directory=datetime.now().strftime('%Y%m%d_%H%M%S.json'))
+                if fdiag:
+                    try:
+                        with open(fdiag, 'w') as f:
+                            self.settings['window'] = [
+                                curg.x(), curg.y(),
+                                curg.width(), curg.height()]
+                            slm.save(f, {'control': self.settings})
+                    except Exception as e:
+                        QMessageBox.information(self, 'Error', str(e))
+
+                    print(fdiag)
+            return myf1
+
+        load.clicked.connect(helper_load())
+        save.clicked.connect(helper_save())
+
+        self.group_file = g
+        
     def make_parameters_group(self):
+        self.make_file_tab(self.double_slm)
         group = QGroupBox("Parameters")
         top = QGridLayout()
         top.addWidget(self.control1.group_geometry, 0, 0,1,2)       
         top.addWidget(self.control1.group_flat, 1, 0)     
         top.addWidget(self.control1.group_wrap, 1, 1)
-        top.addWidget(self.control1.group_file, 2, 0,1,2)
+        top.addWidget(self.group_file, 2, 0,1,2)
         group.setLayout(top)
         self.parametersGroup = group
         
