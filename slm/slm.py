@@ -486,8 +486,8 @@ class DoubleSLM(SLM):
             prho2 = self.slm2.pupil_rho
             
             try:
-                phase[rho1<=1] += self.flat[::-1,::-1][rho2<prho1/prho2]
-                phase[rho2<=1] += self.flat[::-1,::-1][rho1<prho2/prho1]
+                phase[rho1*prho1/prho2<=prho1/prho2] += self.flat[rho2<=prho1/prho2]
+                phase[rho2*prho2/prho1<=prho2/prho1] += self.flat[rho1<=prho2/prho1]
             except Exception as e:
                 message = "Double flat disabled: both pupils must be in the FOV"
                 message+="\n"+str(e)
