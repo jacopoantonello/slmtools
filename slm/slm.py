@@ -311,7 +311,6 @@ class SLM(QDialog):
 
         self.rzern = None
         self.refresh_hologram()
-
     def set_mask2d_sign(self, s):
         self.mask2d_sign = s
         self.refresh_hologram()
@@ -374,8 +373,10 @@ class SLM(QDialog):
 class DoubleSLM(SLM):
     
     newHologramSignal = pyqtSignal(np.ndarray)
+
     def __init__(self):
         super().__init__()
+        self.double_flat_on = False
         self.slm2 = SLM()
         self.slm2.refresh_hologram()
         self.slm2.refreshHologramSignal.connect( 
@@ -471,7 +472,28 @@ class DoubleSLM(SLM):
             self.mask2d_on*self.phi2d +
             self.mask3d_on*self.phi3d +
             self.grating )
-        phase+= self.slm2.all_phase
+        
+        phase += self.slm2.all_phase
+        
+        if (self.double_flat_on and 
+            self.flat_on and isinstance(self.flat, np.ndarray) and 
+            len(self.flat.shape) == 2):
+            #flipud as in make_phi for instance: all phase patterns are inverted
+            rho1 = np.flipud(self.rho)
+            rho2 = np.flipud(self.slm2.rho)
+            
+            prho1 = self.pupil_rho
+            prho2 = self.slm2.pupil_rho
+            
+            try:
+                phase[rho1<=1] += self.flat[::-1,::-1][rho2<prho1/prho2]
+                phase[rho2<=1] += self.flat[::-1,::-1][rho1<prho2/prho1]
+            except Exception as e:
+                message = "Double flat disabled: both pupils must be in the FOV"
+                message+="\n"+str(e)
+                QMessageBox.information(self, 
+                                        'Error', message)
+                
         #Adding second pupil
         #phase += self.slm2.all_phase
         
@@ -491,7 +513,10 @@ class DoubleSLM(SLM):
         self.arr[:] = gray.astype(np.uint32)*0x010101
         self.newHologramSignal.emit(gray)
         self.update()
-        
+    
+    def set_double_flat_on(self,on):
+        self.double_flat_on = on
+        self.refresh_hologram()
     #Overrinding methods for compatibility
     def set_hologram_geometry(self, geometry):
         #Disconnection to avoid conflict when resizing
@@ -514,6 +539,10 @@ class DoubleSLM(SLM):
         d = json.load(f)
         d1 = d["pupil1"]
         d2 = d["pupil2"]
+        try:
+            self.double_flat_on = d["double_flat_on"]
+        except:
+            self.double_flat_on = False
         #Avoids refreshing hologram 1 when loading hologram 2 to avoid
         #conflicts
         self.slm2.refreshHologramSignal.disconnect()
@@ -528,7 +557,8 @@ class DoubleSLM(SLM):
         d1 = self.parameters2dict()
         d2 = self.slm2.parameters2dict()
         d = {"pupil1":d1,
-             "pupil2":d2}
+             "pupil2":d2,
+             "double_flat_on":self.double_flat_on}
         if merge:
             merge.update(d)
         else:
@@ -1461,12 +1491,19 @@ class DoubleControl(QDialog):
     def make_parameters_group(self):
         self.make_file_tab(self.double_slm)
         self.make_flat_tab()
+        self.doubleFlatOnCheckBox = QCheckBox("Double flat on")
+        self.doubleFlatOnCheckBox.setChecked(self.double_slm.double_flat_on)
+        self.doubleFlatOnCheckBox.toggled.connect(self.double_slm.set_double_flat_on)
+        
         group = QGroupBox("Parameters")
         top = QGridLayout()
-        top.addWidget(self.control1.group_geometry, 0, 0,1,2)       
+        top.addWidget(self.control1.group_geometry, 0, 0,1,3)     
+        
         top.addWidget(self.group_flat, 1, 0)
         top.addWidget(self.control1.group_wrap, 1, 1)
-        top.addWidget(self.group_file, 2, 0,1,2)
+        top.addWidget(self.doubleFlatOnCheckBox, 1, 2)
+        
+        top.addWidget(self.group_file, 2, 0,1,3)
         group.setLayout(top)
         self.parametersGroup = group
         
