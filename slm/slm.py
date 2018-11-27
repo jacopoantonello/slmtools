@@ -85,6 +85,7 @@ class SLM(QDialog):
         if pupil_xy[0] != self.pupil_xy[0] or pupil_xy[1] != self.pupil_xy[1]:
             # Necessary to make sure that the new pupil is calculated at the
             # right position
+            print("Changing pupilxy")
             self.rzern = None
             self.pupil_xy = pupil_xy
         self.pupil_rho = d['pupil_rho']
@@ -120,7 +121,6 @@ class SLM(QDialog):
             self.flat = 0.0
         else:
             self.copy_flat_shape()
-        print("refresh hologram: classic version")
         self.setGeometry(*self.hologram_geometry)
         self.setFixedSize(
             self.hologram_geometry[2], self.hologram_geometry[3])
@@ -506,7 +506,7 @@ class DoubleSLM(SLM):
         d1 = d["pupil1"]
         d2 = d["pupil2"]
         self.slm2.dict2parameters(d2)
-        self.slm2.dict2parameters(d1)
+        self.dict2parameters(d1)
         self.refresh_hologram()
         return d
     
@@ -1260,27 +1260,31 @@ class Control(QDialog):
     def reinitialize(self,slm):
         """Useful after loading a new correction file, sets all parameters to
         correct value"""
-        self.group_geometry.deleteLater()
         self.group_pupil.deleteLater()
-        self.group_wrap.deleteLater()
-        self.group_flat.deleteLater()
         self.group_2d.deleteLater()
         self.group_3d.deleteLater()
         self.group_phase.deleteLater()
         self.group_grating.deleteLater()
         self.group_aberration.deleteLater()
-        self.group_file.deleteLater()
         
-        self.make_geometry_tab(slm)
+        #if self.is_parent:
+        self.group_wrap.deleteLater()
+        self.group_flat.deleteLater()
+        self.group_file.deleteLater()
+        self.group_geometry.deleteLater()
+        
         self.make_pupil_tab(slm)
-        self.make_flat_tab(slm)
-        self.make_wrap_tab(slm)
         self.make_2d_tab(slm)
         self.make_3d_tab(slm)
         self.make_phase_tab()
         self.make_aberration_tab(slm, self.phase_display)
-        self.make_file_tab(slm)
         self.make_grating_tab(slm)
+        
+        #if self.is_parent:
+        self.make_wrap_tab(slm)
+        self.make_file_tab(slm)
+        self.make_geometry_tab(slm)
+        self.make_flat_tab(slm)
     
         if self.is_parent: #Single pupil case, we add all the buttons
             self.top.addWidget(self.group_geometry, 0, 0, 1, 2)
@@ -1308,6 +1312,7 @@ class Control(QDialog):
 
             self.top.addWidget(self.group_aberration, 4, 0, 2, 2)
         
+        print("end reinitialize")
     def closeEvent(self, event):
         if self.close_slm:
             self.slm.close()
@@ -1334,13 +1339,6 @@ class DoubleControl(QDialog):
                 settings['window'][2], settings['window'][3])
         
         self.double_slm = double_slm
-        self.slm2 = self.double_slm.slm2
-        self.double_slm.angle_xy[0] = 1
-        
-        self.double_slm.pupil_xy[0] = -100
-        self.slm2.aberration[3] = 1
-        self.double_slm.aberration[3] = 0.5
-        self.double_slm.refresh_hologram()
         
         self.control1 = Control(self.double_slm,settings,is_parent=False)
         self.control2 = Control(self.double_slm.slm2,{},is_parent = False)
@@ -1349,12 +1347,13 @@ class DoubleControl(QDialog):
         self.make_general_display()
         self.make_parameters_group()
         
-        top = QGridLayout()
-        top.addWidget(self.display,0,0)
-        top.addWidget(self.pupilsTab,0,1,2,1)
-        top.addWidget(self.parametersGroup,1,0)
+        self.top = QGridLayout()
+        self.top.addWidget(self.display,0,0)
+        self.top.addWidget(self.pupilsTab,0,1,2,1)
+        self.top.addWidget(self.parametersGroup,1,0)
         
-        self.setLayout(top)
+        self.setLayout(self.top)
+        
         
     def make_pupils_tabs(self):
         self.pupilsTab = QTabWidget()
@@ -1384,7 +1383,7 @@ class DoubleControl(QDialog):
                             slm.load(f)
                             self.control1.reinitialize(slm)
                             self.control2.reinitialize(slm.slm2)
-
+                            self.reinitialise_parameters_group()
                     except Exception as e:
                         QMessageBox.information(self, 'Error', str(e))
 
@@ -1425,6 +1424,12 @@ class DoubleControl(QDialog):
         top.addWidget(self.group_file, 2, 0,1,2)
         group.setLayout(top)
         self.parametersGroup = group
+        
+    def reinitialise_parameters_group(self):
+        """Reinitializes the parameters when loading a correction file"""
+        self.parametersGroup.deleteLater()
+        self.make_parameters_group()
+        self.top.addWidget(self.parametersGroup,1,0)
         
     def closeEvent(self, event):
         if self.close_slm:
