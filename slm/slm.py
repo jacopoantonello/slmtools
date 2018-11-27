@@ -22,7 +22,7 @@ from PyQt5.QtCore import pyqtSignal
 
 from qtconsole.rich_jupyter_widget import RichJupyterWidget
 from qtconsole.inprocess import QtInProcessKernelManager
-
+print(sys.version)
 from slm import version
 #import version
 from slm.ext.czernike import RZern
