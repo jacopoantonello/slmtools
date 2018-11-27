@@ -23,10 +23,10 @@ from PyQt5.QtCore import pyqtSignal
 from qtconsole.rich_jupyter_widget import RichJupyterWidget
 from qtconsole.inprocess import QtInProcessKernelManager
 
-#from slm import version
-import version
-#from slm.ext.czernike import RZern
-from ext.czernike import RZern
+from slm import version
+#import version
+from slm.ext.czernike import RZern
+#from ext.czernike import RZern
 
 """SLM - spatial light modulator (SLM) controller.
 """
