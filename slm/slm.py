@@ -32,29 +32,31 @@ from ext.czernike import RZern
 
 
 class SLM(QDialog):
-    flat_file = None
-    flat = None
-    flat_on = 0.0
-    hologram_geometry = [0, 0, 400, 200]
-    rzern = None
-    arr = None
-    qim = None
-    pupil_xy = [0.0, 0.0]
-    pupil_rho = 50.0
-    angle_xy = [0, 0]
-    aberration = np.zeros((15, 1))
-    wrap_value = 0xff
-    mask2d_on = 0.0
-    mask2d_sign = 1.0
-    mask3d_on = 0.0
-    mask3d_radius = 0.6
-    mask3d_height = 1.0
-    all_phase=0
-    refreshHologramSignal=pyqtSignal()
+    
+    refreshHologramSignal = pyqtSignal()
     def __init__(self, d={}):
         super().__init__(
             parent=None,
             flags=Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        
+        self.flat_file = None
+        self.flat = None
+        self.flat_on = 0.0
+        self.hologram_geometry = [0, 0, 400, 200]
+        self.rzern = None
+        self.arr = None
+        self.qim = None
+        self.pupil_xy = [0.0, 0.0]
+        self.pupil_rho = 50.0
+        self.angle_xy = [0.0, 0.0]
+        self.aberration = np.zeros((15, 1))
+        self.wrap_value = 0xff
+        self.mask2d_on = 0.0
+        self.mask2d_sign = 1.0
+        self.mask3d_on = 0.0
+        self.mask3d_radius = 0.6
+        self.mask3d_height = 1.0
+        self.all_phase=0
 
     def load(self, f):
         d = json.load(f)
@@ -103,14 +105,13 @@ class SLM(QDialog):
         json.dump(merge, f)
 
     def refresh_hologram(self, refresh_slm2 = True):
-        self.refreshHologramSignal.emit()
         # flat file overwrites hologram dimensions
         if self.flat_file is None:
             # [0, 1]
             self.flat = 0.0
         else:
             self.copy_flat_shape()
-
+        print("refresh hologram: classic version")
         self.setGeometry(*self.hologram_geometry)
         self.setFixedSize(
             self.hologram_geometry[2], self.hologram_geometry[3])
@@ -206,6 +207,7 @@ class SLM(QDialog):
         gray = gray.astype(np.uint8)
         self.arr[:] = gray.astype(np.uint32)*0x010101
 
+        self.refreshHologramSignal.emit()
         # traceback.print_stack()
 
     def make_phi2d(self):
@@ -233,11 +235,12 @@ class SLM(QDialog):
         tt = self.angle_xy[0]*(
             masks[0, :, :] - self.pupil_xy[0] - n/2) + self.angle_xy[1]*(
             masks[1, :, :] - self.pupil_xy[1] - m/2)
+        print()
+        print("make grating",self.angle_xy)
+        print()
         tt = tt/value_max*2*np.pi
         tt[self.rho >= 1.0] = 0
         self.grating = np.flipud(tt)
-
-        assert((np.flipud(self.grating)[self.rho>=1.0]==0).all())
         
     def make_phi(self):
         # [-pi, pi] principal branch
@@ -317,7 +320,10 @@ class SLM(QDialog):
             self.wrap_value = wrap_value
 
         self.refresh_hologram()
-
+    def set_anglexy(self,val,ind):
+        self.angle_xy[ind] =  val
+        self.refresh_hologram()
+        
     def set_aberration(self, aberration):
         if aberration is None:
             self.aberration = np.zeros((self.rzern.nk, 1))
@@ -362,6 +368,7 @@ class DoubleSLM(SLM):
     def __init__(self):
         super().__init__()
         self.slm2 = SLM()
+        self.slm2.refresh_hologram()
         self.slm2.refreshHologramSignal.connect( 
                 lambda: self.refresh_hologram(refresh_slm2=False))
         
@@ -980,7 +987,7 @@ class Control(QDialog):
 
         self.group_aberration = top
 
-    def make_grating_tab(self, slm):
+    def make_grating_tab(self,slm):
         """Position tab is meant to help positionning the phase mask
         without using tip and tilt"""
         pos = QGroupBox('Blazed grating')
@@ -1030,23 +1037,28 @@ class Control(QDialog):
         poslay.addWidget(spinbox_y, 0, 5)
 
         def update_coeff(slider, amp, axis):
+
             def f(r):
+                print("UPDATE COEFF SA MERE LA P")
                 slider.blockSignals(True)
                 slider.setValue(fto100(r, amp))
                 slider.blockSignals(False)
-                self.slm.angle_xy[axis] = r
-                self.slm.refresh_hologram()
+                slm.set_anglexy(r,axis)
+                slm.update()
+                """self.slm.angle_xy[axis] = r
+                self.slm.refresh_hologram()"""
             return f
 
         def update_spinbox(s, amp):
-            print("update grating coeff spinbox")
+
             def f(t):
                 maxrad = float(amp)
                 s.setValue(t/multiplier*(2*maxrad) - maxrad)
             return f
 
-        hand1 = update_spinbox(spinbox_x, amp)
-        hand2 = update_coeff(slider_x, amp, 0)
+
+        hand1 = update_spinbox(spinbox_x, 4)
+        hand2 = update_coeff(slider_x, 4, 0)
         slider_x.valueChanged.connect(hand1)
         spinbox_x.valueChanged.connect(hand2)
 
@@ -1119,23 +1131,22 @@ class Control(QDialog):
         QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
 
         self.settings = settings
-        self.slm = slm
         
         if 'window' in settings.keys():
             self.setGeometry(
                 settings['window'][0], settings['window'][1],
                 settings['window'][2], settings['window'][3])
 
-        self.make_geometry_tab(self.slm)
-        self.make_pupil_tab(self.slm)
-        self.make_flat_tab(self.slm)
-        self.make_wrap_tab(self.slm)
-        self.make_2d_tab(self.slm)
-        self.make_3d_tab(self.slm)
+        self.make_geometry_tab(slm)
+        self.make_pupil_tab(slm)
+        self.make_flat_tab(slm)
+        self.make_wrap_tab(slm)
+        self.make_2d_tab(slm)
+        self.make_3d_tab(slm)
         self.make_phase_tab()
-        self.make_grating_tab(self.slm)
-        self.make_aberration_tab(self.slm, self.phase_display)
-        self.make_file_tab(self.slm)
+        self.make_grating_tab(slm)
+        self.make_aberration_tab(slm, self.phase_display)
+        self.make_file_tab(slm)
 
         top = QGridLayout()
         if is_parent:
@@ -1183,6 +1194,13 @@ class DoubleControl(QDialog):
                 settings['window'][2], settings['window'][3])
         
         self.double_slm = double_slm
+        self.slm2 = self.double_slm.slm2
+        self.double_slm.angle_xy[0] = 1
+        
+        self.double_slm.pupil_xy[0] = -100
+        self.slm2.aberration[3] = 1
+        self.double_slm.aberration[3] = 0.5
+        self.double_slm.refresh_hologram()
         
         self.control1 = Control(self.double_slm,settings)
         self.control2 = Control(self.double_slm.slm2,{})
