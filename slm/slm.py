@@ -17,6 +17,7 @@ from PyQt5.QtWidgets import QDialog, QLabel, QLineEdit, QPushButton, QComboBox
 from PyQt5.QtWidgets import QGroupBox, QGridLayout, QCheckBox, QVBoxLayout
 from PyQt5.QtWidgets import QApplication, QShortcut, QSlider, QDoubleSpinBox
 from PyQt5.QtWidgets import QWidget, QFileDialog, QScrollArea, QMessageBox
+from PyQt5.QtWidgets import QTabWidget
 from PyQt5.QtCore import pyqtSignal
 
 from qtconsole.rich_jupyter_widget import RichJupyterWidget
@@ -32,7 +33,6 @@ from ext.czernike import RZern
 
 
 class SLM(QDialog):
-    
     refreshHologramSignal = pyqtSignal()
     def __init__(self, d={}):
         super().__init__(
@@ -365,6 +365,8 @@ class SLM(QDialog):
 
 
 class DoubleSLM(SLM):
+    
+    newHologramSignal = pyqtSignal(np.ndarray)
     def __init__(self):
         super().__init__()
         self.slm2 = SLM()
@@ -479,7 +481,17 @@ class DoubleSLM(SLM):
         assert(gray.max() <= 255)
         gray = gray.astype(np.uint8)
         self.arr[:] = gray.astype(np.uint32)*0x010101
+        self.newHologramSignal.emit(gray)
         self.update()
+        
+    def set_hologram_geometry(self, geometry):
+        self.slm2.set_hologram_geometry(geometry)
+        super().set_hologram_geometry(geometry)
+        
+    def set_wrap_value(self,wrap_value):
+        self.slm2.set_wrap_value(wrap_value)
+        super().set_wrap_value(wrap_value)
+        
     def load(self):
         pass
     def save(self):
@@ -551,7 +563,43 @@ class PhaseDisplay(QWidget):
             qp.drawImage(0, 0, self.qim)
             qp.end()
 
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.figure import Figure
 
+class MatplotlibWindow(QDialog):
+
+    def __init__(self, parent=None,toolbar=False,figsize=None):
+        super().__init__(parent)
+
+        # a figure instance to plot on
+        if figsize is None:
+            self.figure = Figure()
+        else:
+            self.figure = Figure(figsize)
+        self.ax = self.figure.add_subplot(111)
+        # this is the Canvas Widget that displays the `figure`
+        # it takes the `figure` instance as a parameter to __init__
+        self.canvas = FigureCanvas(self.figure)
+
+        # this is the Navigation widget
+        # it takes the Canvas widget and a parent
+        if toolbar:
+            self.toolbar = NavigationToolbar(self.canvas, self)
+
+        # set the layout
+        layout = QVBoxLayout()
+        if toolbar:
+            layout.addWidget(self.toolbar)
+        layout.addWidget(self.canvas)
+        self.setLayout(layout)
+
+        
+    def update_array(self,arr):
+        self.ax.cla()
+        self.ax.imshow(arr,cmap="gray")
+        self.ax.axis("off")
+        self.canvas.draw()
         
 class Control(QDialog):
     # TODO refactor and cleanup awful Qt code
@@ -1149,19 +1197,32 @@ class Control(QDialog):
         self.make_file_tab(slm)
 
         top = QGridLayout()
-        if is_parent:
+        if is_parent: #Single pupil case, we add all the buttons
             top.addWidget(self.group_geometry, 0, 0, 1, 2)
-        top.addWidget(self.group_pupil, 1, 0)
-        top.addWidget(self.group_wrap, 1, 1)
-        
-        if is_parent:
+            top.addWidget(self.group_pupil, 1, 0)
+            top.addWidget(self.group_wrap, 1, 1)
+            
             top.addWidget(self.group_flat, 2, 0)
-        top.addWidget(self.group_2d, 3, 0)
-        top.addWidget(self.group_3d, 4, 0)
-        top.addWidget(self.group_phase, 0, 2, 2, 1)
-        top.addWidget(self.group_grating, 2, 1, 1, 2)
-        top.addWidget(self.group_aberration, 3, 1, 3, 2)
-        top.addWidget(self.group_file, 5, 0)
+            top.addWidget(self.group_2d, 3, 0)
+            top.addWidget(self.group_3d, 4, 0)
+            top.addWidget(self.group_phase, 0, 2, 2, 1)
+            top.addWidget(self.group_grating, 2, 1, 1, 2)
+            top.addWidget(self.group_aberration, 3, 1, 3, 2)
+            top.addWidget(self.group_file, 5, 0)
+        else:
+            #!!!
+            #top.addWidget(self.group_geometry, 0, 0, 1, 2)            
+            #top.addWidget(self.group_wrap, 1, 1)
+            #top.addWidget(self.group_flat, 2, 0)
+            #top.addWidget(self.group_file, 5, 0)
+
+            top.addWidget(self.group_phase, 0, 0, 2, 1)
+            top.addWidget(self.group_pupil, 3, 0)
+            top.addWidget(self.group_grating, 4, 0)
+            top.addWidget(self.group_2d, 5, 0)
+            top.addWidget(self.group_3d, 6, 0)
+
+            top.addWidget(self.group_aberration, 0, 2, 7, 3)
         self.setLayout(top)
 
         self.top = top
@@ -1202,13 +1263,39 @@ class DoubleControl(QDialog):
         self.double_slm.aberration[3] = 0.5
         self.double_slm.refresh_hologram()
         
-        self.control1 = Control(self.double_slm,settings)
-        self.control2 = Control(self.double_slm.slm2,{})
+        self.control1 = Control(self.double_slm,settings,is_parent=False)
+        self.control2 = Control(self.double_slm.slm2,{},is_parent = False)
+        
+        self.make_pupils_tabs()
+        self.make_general_display()
+        self.make_parameters_group()
+        
         top = QGridLayout()
-        top.addWidget(self.control1,0,0)
-        top.addWidget(self.control2,0,1)
+        top.addWidget(self.display,0,0)
+        top.addWidget(self.pupilsTab,0,1,2,1)
+        top.addWidget(self.parametersGroup,1,0)
+        
         self.setLayout(top)
+        
+    def make_pupils_tabs(self):
+        self.pupilsTab = QTabWidget()
+        self.pupilsTab.addTab(self.control1,"Pupil 1")
+        self.pupilsTab.addTab(self.control2,"Pupil 2")
 
+    def make_general_display(self):
+        self.display = MatplotlibWindow(figsize = (8,6))
+        self.double_slm.newHologramSignal.connect(self.display.update_array)
+    
+    def make_parameters_group(self):
+        group = QGroupBox("Parameters")
+        top = QGridLayout()
+        top.addWidget(self.control1.group_geometry, 0, 0,1,2)       
+        top.addWidget(self.control1.group_flat, 1, 0)     
+        top.addWidget(self.control1.group_wrap, 1, 1)
+        top.addWidget(self.control1.group_file, 2, 0,1,2)
+        group.setLayout(top)
+        self.parametersGroup = group
+        
     def closeEvent(self, event):
         if self.close_slm:
             self.double_slm.slm2.close()
