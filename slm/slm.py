@@ -31,7 +31,6 @@ from ext.czernike import RZern
 """SLM - spatial light modulator (SLM) controller.
 """
 
-
 class SLM(QDialog):
     refreshHologramSignal = pyqtSignal()
     def __init__(self, d={}):
@@ -85,7 +84,6 @@ class SLM(QDialog):
         if pupil_xy[0] != self.pupil_xy[0] or pupil_xy[1] != self.pupil_xy[1]:
             # Necessary to make sure that the new pupil is calculated at the
             # right position
-            print("Changing pupilxy")
             self.rzern = None
             self.pupil_xy = pupil_xy
         self.pupil_rho = d['pupil_rho']
@@ -97,6 +95,7 @@ class SLM(QDialog):
         self.mask3d_radius = d['mask3d_radius']
         self.mask3d_height = d['mask3d_height']
         self.angle_xy = d['angle_xy']
+        #Problem there
         self.set_flat(d['flat_file'])
         self.flat_on = d['flat_on']
         
@@ -217,7 +216,6 @@ class SLM(QDialog):
         self.arr[:] = gray.astype(np.uint32)*0x010101
 
         self.refreshHologramSignal.emit()
-        # traceback.print_stack()
 
     def make_phi2d(self):
         # [-pi, pi] principal branch
@@ -472,7 +470,8 @@ class DoubleSLM(SLM):
             self.phi +
             self.mask2d_on*self.phi2d +
             self.mask3d_on*self.phi3d +
-            self.grating + self.slm2.all_phase)
+            self.grating )
+        phase+= self.slm2.all_phase
         #Adding second pupil
         #phase += self.slm2.all_phase
         
@@ -493,19 +492,34 @@ class DoubleSLM(SLM):
         self.newHologramSignal.emit(gray)
         self.update()
         
+    #Overrinding methods for compatibility
     def set_hologram_geometry(self, geometry):
+        #Disconnection to avoid conflict when resizing
+        self.slm2.refreshHologramSignal.disconnect()
         self.slm2.set_hologram_geometry(geometry)
+        self.slm2.refreshHologramSignal.connect(
+                lambda: self.refresh_hologram(refresh_slm2=False))
         super().set_hologram_geometry(geometry)
         
     def set_wrap_value(self,wrap_value):
         self.slm2.set_wrap_value(wrap_value)
         super().set_wrap_value(wrap_value)
-            
+        
+    def copy_flat_shape(self):
+        self.slm2.hologram_geometry[2] = self.flat.shape[1]
+        self.slm2.hologram_geometry[3] = self.flat.shape[0]          
+        super().copy_flat_shape()
+        
     def load(self, f):
         d = json.load(f)
         d1 = d["pupil1"]
         d2 = d["pupil2"]
+        #Avoids refreshing hologram 1 when loading hologram 2 to avoid
+        #conflicts
+        self.slm2.refreshHologramSignal.disconnect()
         self.slm2.dict2parameters(d2)
+        self.slm2.refreshHologramSignal.connect(
+                lambda: self.refresh_hologram(refresh_slm2=False))
         self.dict2parameters(d1)
         self.refresh_hologram()
         return d
@@ -718,6 +732,7 @@ class Control(QDialog):
                 fdiag, _ = QFileDialog.getOpenFileName()
                 if fdiag:
                     slm.set_flat(fdiag)
+                    self.reinitialize(slm)
             return myf1
 
         g = QGroupBox('Flattening')
@@ -1354,7 +1369,13 @@ class DoubleControl(QDialog):
         
         self.setLayout(self.top)
         
-        
+    @staticmethod
+    def helper_boolupdate(mycallback, myupdate):
+        def f(i):
+            mycallback(i)
+            myupdate()
+        return f
+    
     def make_pupils_tabs(self):
         self.pupilsTab = QTabWidget()
         self.pupilsTab.addTab(self.control1,"Pupil 1")
@@ -1414,12 +1435,36 @@ class DoubleControl(QDialog):
 
         self.group_file = g
         
+    def make_flat_tab(self):
+        def helper_load_flat1():
+            def myf1():
+                fdiag, _ = QFileDialog.getOpenFileName()
+                if fdiag:
+                    slm.set_flat(fdiag)
+                    self.control1.reinitialize(self.double_slm) #To set correct values
+                    self.reinitialise_parameters_group()
+            return myf1
+
+        g = QGroupBox('Flattening')
+        l1 = QGridLayout()
+        cboxlf = QCheckBox('flat on')
+        cboxlf.toggled.connect(self.helper_boolupdate(
+            self.double_slm.set_flat_on, self.double_slm.update))
+        cboxlf.setChecked(self.double_slm.flat_on)
+        l1.addWidget(cboxlf, 0, 0)
+        loadbut = QPushButton('load')
+        loadbut.clicked.connect(helper_load_flat1())
+        l1.addWidget(loadbut, 0, 1)
+        g.setLayout(l1)
+        self.group_flat = g
+
     def make_parameters_group(self):
         self.make_file_tab(self.double_slm)
+        self.make_flat_tab()
         group = QGroupBox("Parameters")
         top = QGridLayout()
         top.addWidget(self.control1.group_geometry, 0, 0,1,2)       
-        top.addWidget(self.control1.group_flat, 1, 0)     
+        top.addWidget(self.group_flat, 1, 0)
         top.addWidget(self.control1.group_wrap, 1, 1)
         top.addWidget(self.group_file, 2, 0,1,2)
         group.setLayout(top)
@@ -1428,6 +1473,7 @@ class DoubleControl(QDialog):
     def reinitialise_parameters_group(self):
         """Reinitializes the parameters when loading a correction file"""
         self.parametersGroup.deleteLater()
+        
         self.make_parameters_group()
         self.top.addWidget(self.parametersGroup,1,0)
         
