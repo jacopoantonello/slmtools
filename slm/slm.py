@@ -486,6 +486,8 @@ class DoubleSLM(SLM):
             prho2 = self.slm2.pupil_rho
             
             try:
+                #use prho1/prho2 to ensure the exact same number of pixels in
+                #both masks
                 phase[rho1*prho1/prho2<=prho1/prho2] += \
                     self.flat[::-1,::-1][rho2[::-1,::-1]<=prho1/prho2]
                 phase[rho2*prho2/prho1<=prho2/prho1] += \
