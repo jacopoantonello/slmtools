@@ -496,9 +496,10 @@ class DoubleSLM(SLM):
                 message+="\n"+str(e)
                 QMessageBox.information(self, 
                                         'Error', message)
-
-        # all in waves
-        gray = background + phase
+       
+        phase /= (2*np.pi)  # phase in waves
+        gray = background+phase
+        
 
         printout('gray', gray)
         gray -= np.floor(gray.min())
