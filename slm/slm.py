@@ -236,7 +236,7 @@ class SLM(QDialog):
     def make_grating(self):
         m = self.hologram_geometry[3]
         n = self.hologram_geometry[2]
-        value_max = 50
+        value_max = 15
 
         masks = np.indices((m, n), dtype="float")
         tt = self.angle_xy[0]*(
@@ -484,24 +484,22 @@ class DoubleSLM(SLM):
             
             prho1 = self.pupil_rho
             prho2 = self.slm2.pupil_rho
-            
             try:
                 #use prho1/prho2 to ensure the exact same number of pixels in
                 #both masks
                 phase[rho1*prho1/prho2<=prho1/prho2] += \
-                    self.flat[::-1,::-1][rho2[::-1,::-1]<=prho1/prho2]
+                    self.flat[::-1,::-1][rho2[::-1,::-1]<=prho1/prho2]*2*np.pi
                 phase[rho2*prho2/prho1<=prho2/prho1] += \
-                    self.flat[::-1,::-1][rho1[::-1,::-1]<=prho2/prho1]
+                    self.flat[::-1,::-1][rho1[::-1,::-1]<=prho2/prho1]*2*np.pi
             except Exception as e:
                 message = "Double flat disabled: both pupils must be in the FOV"
                 message+="\n"+str(e)
                 QMessageBox.information(self, 
                                         'Error', message)
-                
-        
-        phase /= (2*np.pi)  # phase in waves
+
         # all in waves
         gray = background + phase
+
         printout('gray', gray)
         gray -= np.floor(gray.min())
         assert(gray.min() >= -1e-9)
@@ -512,6 +510,7 @@ class DoubleSLM(SLM):
         assert(gray.min() >= 0)
         assert(gray.max() <= 255)
         gray = gray.astype(np.uint8)
+
         self.arr[:] = gray.astype(np.uint32)*0x010101
         self.newHologramSignal.emit(gray)
         self.update()
