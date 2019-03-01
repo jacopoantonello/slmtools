@@ -4,6 +4,7 @@
 import os
 import sys
 import re
+import subprocess
 
 from subprocess import check_output
 from setuptools import setup
@@ -18,6 +19,9 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 
 def update_version():
     try:
+        subprocess.call([
+            'git', 'config', 'core.autocrlf', 'false'])
+        subprocess.call(['git', 'config', 'core.fileMode', 'false'])
         toks = check_output(
             'git describe --tags --long --dirty', universal_newlines=True,
             shell=True).strip().split('-')
@@ -39,7 +43,8 @@ def update_version():
             f.write(f"__date__ = '{date}'\n")
             f.write(f"__commit__ = '{commit}'")
     except Exception as e:
-        print('Cannot update version {}'.format(str(e)), file=sys.stderr)
+        print(f'Cannot update version: {str(e)}', file=sys.stderr)
+        print('Is Git installed?', file=sys.stderr)
 
 
 update_version()
