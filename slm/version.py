@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-__version__ = '0.0.0+12.gc47eb58'
-__date__ = 'Tue Nov 27 17:15:20 2018 +0000'
-__commit__ = 'c47eb583321b7aec0b79826eb718397ee89de86b'
+__version__ = '0.0.0+17.g2580128.dirty'
+__date__ = 'Fri Mar 1 09:19:26 2019 +0000'
+__commit__ = '25801288e2a7776e0e5400c4b845bd0b428ebb60'

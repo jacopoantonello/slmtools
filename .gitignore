@@ -5,4 +5,5 @@ __pycache__/
 .*.swp
 *.json
 .directory
+/slm/version.py
 /.eggs
