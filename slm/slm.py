@@ -278,14 +278,14 @@ class SLM(QDialog):
 
         self.refresh_hologram()
 
-    def set_hologram_geometry(self, geometry):
+    def set_hologram_geometry(self, geometry,refresh=True):
         if isinstance(self.flat, np.ndarray) and len(self.flat.shape) == 2:
             self.hologram_geometry[:2] = geometry[:2]
             self.copy_flat_shape()
         elif geometry is not None:
             self.hologram_geometry[:] = geometry[:]
-
-        self.refresh_hologram()
+        if refresh:
+            self.refresh_hologram()
 
     def set_pupil_xy(self, xy):
         if xy is None:
@@ -379,77 +379,69 @@ class DoubleSLM(SLM):
         self.double_flat_on = False
         self.slm2 = SLM()
         self.slm2.refresh_hologram()
-        self.slm2.refreshHologramSignal.connect( 
-                lambda: self.refresh_hologram(refresh_slm2=False))
+        self.slm2.refreshHologramSignal.connect(self.refresh_hologram)
         
-    def refresh_hologram(self,refresh_slm2 = True):
+        self.slm1 = SLM()
+        self.slm1.refresh_hologram()
+        self.slm1.refreshHologramSignal.connect(self.refresh_hologram)
+        
+    def refresh_hologram(self,**kwargs):
         """rewrite refresh hologram for double SLM"""
-        if refresh_slm2:
-            self.slm2.refresh_hologram()
-            print("refresh hologram from slm1")
-        else:
-            print("refresh hologram from slm2")
-        print("Grating values, slm 1 and 2:",self.angle_xy,self.slm2.angle_xy)
+        print("double refresh hologram")
         if self.flat_file is None:
             # [0, 1]
             self.flat = 0.0
         else:
             self.copy_flat_shape()
-
+        
         self.setGeometry(*self.hologram_geometry)
         self.setFixedSize(
             self.hologram_geometry[2], self.hologram_geometry[3])
-
         if (
                 self.arr is None or
                 self.qim is None or
                 self.arr.shape[0] != self.hologram_geometry[3] or
                 self.arr.shape[1] != self.hologram_geometry[2]):
 
-            print('refresh_hologram(): ALLOCATING arr & qim')
+            print('double refresh_hologram(): ALLOCATING arr & qim')
             self.arr = np.ndarray(
                 shape=(self.hologram_geometry[3], self.hologram_geometry[2]),
                 dtype=np.uint32)
             self.qim = QImage(
                 self.arr.data, self.arr.shape[1], self.arr.shape[0],
                 QImage.Format_RGB32)
+            
+        # [0, 1] waves
+        background = self.flat_on*self.flat
+        # [-pi, pi] principal branch rads (zero mean)
+        phase = self.slm1.all_phase + self.slm2.all_phase
 
-            self.rzern = None
-
-        if self.rzern is None or self.aberration.size != self.rzern.nk:
-            print('refresh_hologram(): ALLOCATING Zernike')
-
-            def make_dd(rho, n, x):
-                scale = (n/2)/rho
-                dd = np.linspace(-scale, scale, n)
-                dd -= np.diff(dd)[0]*x
-                return dd
-
-            nnew = int((-3 + sqrt(9 - 4*2*(1 - self.aberration.size)))/2)
-            self.rzern = RZern(nnew)
-            dd1 = make_dd(
-                self.pupil_rho,
-                self.hologram_geometry[2],
-                self.pupil_xy[0])
-            dd2 = make_dd(
-                self.pupil_rho,
-                self.hologram_geometry[3],
-                self.pupil_xy[1])
-            self.xv, self.yv = np.meshgrid(dd1, dd2)
-            self.rzern.make_cart_grid(self.xv, self.yv)
-
-            self.theta = np.arctan2(self.yv, self.xv)
-            self.rho = np.sqrt(self.xv**2 + self.yv**2)
-
-        self.make_phi2d()
-        assert(np.all(np.isfinite(self.phi2d)))
-        self.make_phi3d()
-        assert(np.all(np.isfinite(self.phi3d)))
-        self.make_phi()
-        assert(np.all(np.isfinite(self.phi)))
-        self.make_grating()
-        assert(np.all(np.isfinite(self.grating)))
-
+        if (self.double_flat_on and 
+            self.flat_on and isinstance(self.flat, np.ndarray) and 
+            len(self.flat.shape) == 2):
+            #flipud as in make_phi for instance: all phase patterns are inverted
+            rho1 = np.flipud(self.slm1.rho)
+            rho2 = np.flipud(self.slm2.rho)
+            
+            prho1 = self.slm1.pupil_rho
+            prho2 = self.slm2.pupil_rho
+            #try:
+                #use prho1/prho2 to ensure the exact same number of pixels in
+                #both masks
+            phase[rho1*prho1/prho2<=prho1/prho2] += \
+                self.flat[::-1,::-1][rho2[::-1,::-1]<=prho1/prho2]*2*np.pi
+            phase[rho2*prho2/prho1<=prho2/prho1] += \
+                self.flat[::-1,::-1][rho1[::-1,::-1]<=prho2/prho1]*2*np.pi
+            """except Exception as e:
+                message = "Double flat disabled: both pupils must be in the FOV"
+                message+="\n"+str(e)
+                QMessageBox.information(self, 
+                                        'Error', message)"""
+       
+        phase /= (2*np.pi)  # phase in waves
+        gray = background+phase
+        
+        
         def printout(t, x):
             if isinstance(x, np.ndarray):
                 print('{} [{:g}, {:g}] {:g}'.format(
@@ -457,53 +449,10 @@ class DoubleSLM(SLM):
             else:
                 print(t + ' [0.0, 0.0] 0.0')
 
-        print('refresh_hologram(): repaint')
-
-        printout('flat', self.flat)
-        printout('phi', self.phi)
-        printout('phi2d', self.phi2d)
-        printout('phi3d', self.phi3d)
-
-        # [0, 1] waves
-        background = self.flat_on*self.flat
-        # [-pi, pi] principal branch rads (zero mean)
-        phase = (
-            self.phi +
-            self.mask2d_on*self.phi2d +
-            self.mask3d_on*self.phi3d +
-            self.grating )
-        
-        phase += self.slm2.all_phase
-        
-        if (self.double_flat_on and 
-            self.flat_on and isinstance(self.flat, np.ndarray) and 
-            len(self.flat.shape) == 2):
-            #flipud as in make_phi for instance: all phase patterns are inverted
-            rho1 = np.flipud(self.rho)
-            rho2 = np.flipud(self.slm2.rho)
-            
-            prho1 = self.pupil_rho
-            prho2 = self.slm2.pupil_rho
-            try:
-                #use prho1/prho2 to ensure the exact same number of pixels in
-                #both masks
-                phase[rho1*prho1/prho2<=prho1/prho2] += \
-                    self.flat[::-1,::-1][rho2[::-1,::-1]<=prho1/prho2]*2*np.pi
-                phase[rho2*prho2/prho1<=prho2/prho1] += \
-                    self.flat[::-1,::-1][rho1[::-1,::-1]<=prho2/prho1]*2*np.pi
-            except Exception as e:
-                message = "Double flat disabled: both pupils must be in the FOV"
-                message+="\n"+str(e)
-                QMessageBox.information(self, 
-                                        'Error', message)
-       
-        phase /= (2*np.pi)  # phase in waves
-        gray = background+phase
-        
-
         printout('gray', gray)
         gray -= np.floor(gray.min())
         assert(gray.min() >= -1e-9)
+        print("wrap",self.wrap_value)
         gray *= self.wrap_value
         printout('gray', gray)
         gray %= self.wrap_value
@@ -511,31 +460,35 @@ class DoubleSLM(SLM):
         assert(gray.min() >= 0)
         assert(gray.max() <= 255)
         gray = gray.astype(np.uint8)
-
+        
         self.arr[:] = gray.astype(np.uint32)*0x010101
+            
         self.newHologramSignal.emit(gray)
         self.update()
-    
+        print("end double rfresh")
+        
     def set_double_flat_on(self,on):
         self.double_flat_on = on
         self.refresh_hologram()
     #Overrinding methods for compatibility
     def set_hologram_geometry(self, geometry):
         #Disconnection to avoid conflict when resizing
-        self.slm2.refreshHologramSignal.disconnect()
+        self.geometry = geometry
+        self.slm2.blockSignals(True)
         self.slm2.set_hologram_geometry(geometry)
-        self.slm2.refreshHologramSignal.connect(
-                lambda: self.refresh_hologram(refresh_slm2=False))
-        super().set_hologram_geometry(geometry)
+        self.slm2.blockSignals(False)
+        
+        self.slm1.set_hologram_geometry(geometry)
         
     def set_wrap_value(self,wrap_value):
-        self.slm2.set_wrap_value(wrap_value)
-        super().set_wrap_value(wrap_value)
+        self.wrap_value = wrap_value
         
     def copy_flat_shape(self):
         self.slm2.hologram_geometry[2] = self.flat.shape[1]
-        self.slm2.hologram_geometry[3] = self.flat.shape[0]          
-        super().copy_flat_shape()
+        self.slm2.hologram_geometry[3] = self.flat.shape[0]   
+        
+        self.slm1.hologram_geometry[2] = self.flat.shape[1]
+        self.slm1.hologram_geometry[3] = self.flat.shape[0]  
         
     def load(self, f):
         d = json.load(f)
@@ -547,16 +500,22 @@ class DoubleSLM(SLM):
             self.double_flat_on = False
         #Avoids refreshing hologram 1 when loading hologram 2 to avoid
         #conflicts
-        self.slm2.refreshHologramSignal.disconnect()
+        self.slm2.blockSignals(True)
         self.slm2.dict2parameters(d2)
-        self.slm2.refreshHologramSignal.connect(
-                lambda: self.refresh_hologram(refresh_slm2=False))
-        self.dict2parameters(d1)
+        self.slm2.blockSignals(False)
+        
+        self.slm1.blockSignals(True)
+        self.slm1.dict2parameters(d1)
+        self.slm1.blockSignals(False)
+
+        self.hologram_geometry = d1["hologram_geometry"]
+        self.wrap_value = d1["wrap_value"]
+        
         self.refresh_hologram()
         return d
     
     def save(self, f, merge=None):
-        d1 = self.parameters2dict()
+        d1 = self.slm1.parameters2dict()
         d2 = self.slm2.parameters2dict()
         d = {"pupil1":d1,
              "pupil2":d2,
@@ -566,9 +525,15 @@ class DoubleSLM(SLM):
         else:
             merge = d
         json.dump(merge, f)
-        
     
-    
+    def paintEvent(self, e):
+        print("double paint",self.qim)
+        if self.qim is not None:
+            qp = QPainter()
+            qp.begin(self)
+            qp.drawImage(0, 0, self.qim)
+            qp.end()
+            
 class PhaseDisplay(QWidget):
     # TODO pthread me or the SLM class itself
 
@@ -1387,10 +1352,11 @@ class DoubleControl(QDialog):
         
         self.double_slm = double_slm
         
-        self.control1 = Control(self.double_slm,settings,is_parent=False)
+        self.control1 = Control(self.double_slm.slm1,settings,is_parent=False)
         self.control2 = Control(self.double_slm.slm2,{},is_parent = False)
         
         self.make_pupils_tabs()
+        self.make_geometry_tab(double_slm)
         self.make_general_display()
         self.make_parameters_group()
         
@@ -1407,7 +1373,24 @@ class DoubleControl(QDialog):
             mycallback(i)
             myupdate()
         return f
-    
+    @staticmethod
+    def helper1(name, labels, mins, handlers, curvals, Validator):
+        group = QGroupBox(name)
+        l1 = QGridLayout()
+        for i, tup in enumerate(zip(labels, mins, handlers, curvals)):
+            txt, mini, handler, curval = tup
+            l1.addWidget(QLabel(txt), 0, 2*i)
+            le = QLineEdit(str(curval))
+            le.editingFinished.connect(handler(i, le))
+            le.setMaximumWidth(50)
+            val = Validator()
+            le.setValidator(val)
+            if mini:
+                val.setBottom(mini)
+            l1.addWidget(le, 0, 2*i + 1)
+        group.setLayout(l1)
+        return group
+
     def make_pupils_tabs(self):
         self.pupilsTab = QTabWidget()
         self.pupilsTab.addTab(self.control1,"Pupil 1")
@@ -1434,7 +1417,7 @@ class DoubleControl(QDialog):
                     try:
                         with open(fdiag, 'r') as f:
                             slm.load(f)
-                            self.control1.reinitialize(slm)
+                            self.control1.reinitialize(slm.slm1)
                             self.control2.reinitialize(slm.slm2)
                             self.reinitialise_parameters_group()
                     except Exception as e:
@@ -1489,6 +1472,30 @@ class DoubleControl(QDialog):
         l1.addWidget(loadbut, 0, 1)
         g.setLayout(l1)
         self.group_flat = g
+        
+    def make_geometry_tab(self, double_slm):
+            def handle_geometry(ind, le):
+                def f():
+                    try:
+                        slm
+                        ival = int(le.text())
+                    except Exception:
+                        le.setText(str(double_slm.hologram_geometry[ind]))
+                        return
+                    double_slm.slm1.hologram_geometry[ind] = ival
+                    double_slm.slm2.hologram_geometry[ind] = ival
+                    double_slm.hologram_geometry[ind] = ival
+                    
+                    double_slm.set_hologram_geometry(double_slm.hologram_geometry)
+                    le.setText(str(double_slm.hologram_geometry[ind]))
+                return f
+    
+            self.group_geometry = self.helper1(
+                'Geometry',
+                ['x', 'y', 'width', 'height'],
+                [None, None, 100, 100],
+                [handle_geometry]*4,
+                double_slm.hologram_geometry, QIntValidator)
 
     def make_parameters_group(self):
         self.make_file_tab(self.double_slm)
@@ -1499,7 +1506,7 @@ class DoubleControl(QDialog):
         
         group = QGroupBox("Parameters")
         top = QGridLayout()
-        top.addWidget(self.control1.group_geometry, 0, 0,1,3)     
+        top.addWidget(self.group_geometry, 0, 0,1,3)     
         
         top.addWidget(self.group_flat, 1, 0)
         top.addWidget(self.control1.group_wrap, 1, 1)
@@ -1512,9 +1519,11 @@ class DoubleControl(QDialog):
     def reinitialise_parameters_group(self):
         """Reinitializes the parameters when loading a correction file"""
         self.parametersGroup.deleteLater()
-        
+        self.group_geometry.deleteLater()
         self.make_parameters_group()
+        self.make_geometry_tab()
         self.top.addWidget(self.parametersGroup,1,0)
+        self.top.addWidget(self.group_geometry, 0, 0,1,3)
         
     def closeEvent(self, event):
         if self.close_slm:
