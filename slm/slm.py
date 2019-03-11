@@ -1455,11 +1455,11 @@ class DoubleControl(QDialog):
                 fdiag, _ = QFileDialog.getOpenFileName()
                 if fdiag:
                     try:
-                    with open(fdiag, 'r') as f:
-                        slm.load(f)
-                        self.control1.reinitialize(slm.slm1)
-                        self.control2.reinitialize(slm.slm2)
-                        self.reinitialise_parameters_group()
+                        with open(fdiag, 'r') as f:
+                            slm.load(f)
+                            self.control1.reinitialize(slm.slm1)
+                            self.control2.reinitialize(slm.slm2)
+                            self.reinitialise_parameters_group()
                     except Exception as e:
                         QMessageBox.information(self, 'Helper load 2 Error', str(e))
 
