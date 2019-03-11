@@ -261,7 +261,7 @@ class SLM(QDialog):
         self.hologram_geometry[2] = self.flat.shape[1]
         self.hologram_geometry[3] = self.flat.shape[0]
 
-    def set_flat(self, fname):
+    def set_flat(self, fname,refresh_hologram = True):
         if fname is None or fname == '':
             self.flat_file = None
             self.flat = 0.0
@@ -275,8 +275,8 @@ class SLM(QDialog):
             except Exception:
                 self.flat_file = None
                 self.flat = 0.0
-
-        self.refresh_hologram()
+        if refresh_hologram:
+            self.refresh_hologram()
 
     def set_hologram_geometry(self, geometry,refresh=True):
         if isinstance(self.flat, np.ndarray) and len(self.flat.shape) == 2:
@@ -382,12 +382,12 @@ class DoubleSLM(SLM):
         self.slm2.refreshHologramSignal.connect(self.refresh_hologram)
         
         self.slm1 = SLM()
-        self.slm1.refresh_hologram()
         self.slm1.refreshHologramSignal.connect(self.refresh_hologram)
+        self.slm1.refresh_hologram()
         
     def refresh_hologram(self,**kwargs):
         """rewrite refresh hologram for double SLM"""
-        print("double refresh hologram")
+
         if self.flat_file is None:
             # [0, 1]
             self.flat = 0.0
@@ -419,19 +419,35 @@ class DoubleSLM(SLM):
         if (self.double_flat_on and 
             self.flat_on and isinstance(self.flat, np.ndarray) and 
             len(self.flat.shape) == 2):
+            
+            
             #flipud as in make_phi for instance: all phase patterns are inverted
             rho1 = np.flipud(self.slm1.rho)
             rho2 = np.flipud(self.slm2.rho)
             
             prho1 = self.slm1.pupil_rho
             prho2 = self.slm2.pupil_rho
-            #try:
-                #use prho1/prho2 to ensure the exact same number of pixels in
-                #both masks
-            phase[rho1*prho1/prho2<=prho1/prho2] += \
-                self.flat[::-1,::-1][rho2[::-1,::-1]<=prho1/prho2]*2*np.pi
-            phase[rho2*prho2/prho1<=prho2/prho1] += \
-                self.flat[::-1,::-1][rho1[::-1,::-1]<=prho2/prho1]*2*np.pi
+            
+            def double_position_checker(slm):
+                rho = slm.pupil_rho
+                geom = np.array(slm.hologram_geometry[2:])
+                xy = np.array(slm.pupil_xy) + geom//2
+                print(rho,xy,geom)
+                return (rho + xy < geom).all() and (rho - xy < np.zeros(2)).all()
+            ok_to_pursue = ( double_position_checker(self.slm1) and 
+                            double_position_checker(self.slm2) )
+            if ok_to_pursue:
+                #try:
+                    #use prho1/prho2 to ensure the exact same number of pixels in
+                    #both masks
+                print("ok to pursue")
+                phase[rho1*prho1/prho2<=prho1/prho2] += \
+                    self.flat[::-1,::-1][rho2[::-1,::-1]<=prho1/prho2]*2*np.pi
+                phase[rho2*prho2/prho1<=prho2/prho1] += \
+                    self.flat[::-1,::-1][rho1[::-1,::-1]<=prho2/prho1]*2*np.pi
+            else:
+                print("Double flat disabled")
+                #self.set_double_flat_on(False,refresh=False)
             """except Exception as e:
                 message = "Double flat disabled: both pupils must be in the FOV"
                 message+="\n"+str(e)
@@ -465,11 +481,18 @@ class DoubleSLM(SLM):
             
         self.newHologramSignal.emit(gray)
         self.update()
-        print("end double rfresh")
-        
-    def set_double_flat_on(self,on):
-        self.double_flat_on = on
+
+    def set_flat(self, fname):
+        super().set_flat(fname,refresh_hologram = False)
+        self.hologram_geometry[2:] = self.flat.shape[::-1]
+        self.copy_flat_shape()
         self.refresh_hologram()
+        
+    def set_double_flat_on(self,on,refresh = True):
+        self.double_flat_on = on
+        if refresh:
+            self.refresh_hologram()
+        
     #Overrinding methods for compatibility
     def set_hologram_geometry(self, geometry):
         #Disconnection to avoid conflict when resizing
@@ -482,7 +505,7 @@ class DoubleSLM(SLM):
         
     def set_wrap_value(self,wrap_value):
         self.wrap_value = wrap_value
-        
+
     def copy_flat_shape(self):
         self.slm2.hologram_geometry[2] = self.flat.shape[1]
         self.slm2.hologram_geometry[3] = self.flat.shape[0]   
@@ -490,10 +513,19 @@ class DoubleSLM(SLM):
         self.slm1.hologram_geometry[2] = self.flat.shape[1]
         self.slm1.hologram_geometry[3] = self.flat.shape[0]  
         
+        self.slm1.blockSignals(True)
+        self.slm1.refresh_hologram()
+        self.slm1.blockSignals(False)
+        
+        self.slm2.blockSignals(True)
+        self.slm2.refresh_hologram()
+        self.slm2.blockSignals(False)
+        
     def load(self, f):
         d = json.load(f)
         d1 = d["pupil1"]
         d2 = d["pupil2"]
+            
         try:
             self.double_flat_on = d["double_flat_on"]
         except:
@@ -511,14 +543,19 @@ class DoubleSLM(SLM):
         self.hologram_geometry = d1["hologram_geometry"]
         self.wrap_value = d1["wrap_value"]
         
+        if "common_parameters" in d:
+            d3 = d["common_parameters"]
+            self.dict2parameters(d3)
         self.refresh_hologram()
         return d
     
     def save(self, f, merge=None):
         d1 = self.slm1.parameters2dict()
         d2 = self.slm2.parameters2dict()
+        d3 = self.parameters2dict()
         d = {"pupil1":d1,
              "pupil2":d2,
+             "common_parameters": d3,
              "double_flat_on":self.double_flat_on}
         if merge:
             merge.update(d)
@@ -910,6 +947,8 @@ class Control(QDialog):
         toplay = QGridLayout()
         top.setLayout(toplay)
         labzm = QLabel('max radial order')
+        print(slm)
+        print(slm.rzern)
         lezm = QLineEdit(str(slm.rzern.n))
         lezm.setMaximumWidth(50)
         lezm.setValidator(QIntValidator(1, 255))
@@ -1456,7 +1495,8 @@ class DoubleControl(QDialog):
                 fdiag, _ = QFileDialog.getOpenFileName()
                 if fdiag:
                     slm.set_flat(fdiag)
-                    self.control1.reinitialize(self.double_slm) #To set correct values
+                    self.control1.reinitialize(self.double_slm.slm1) 
+                    self.control2.reinitialize(self.double_slm.slm2) 
                     self.reinitialise_parameters_group()
             return myf1
 
@@ -1521,9 +1561,9 @@ class DoubleControl(QDialog):
         self.parametersGroup.deleteLater()
         self.group_geometry.deleteLater()
         self.make_parameters_group()
-        self.make_geometry_tab()
+        self.make_geometry_tab(self.double_slm)
+        self.top.addWidget(self.pupilsTab,0,1,2,1)
         self.top.addWidget(self.parametersGroup,1,0)
-        self.top.addWidget(self.group_geometry, 0, 0,1,3)
         
     def closeEvent(self, event):
         if self.close_slm:
