@@ -96,9 +96,11 @@ class SLM(QDialog):
         self.mask3d_height = d['mask3d_height']
         self.angle_xy = d['angle_xy']
         #Problem there
-        self.set_flat(d['flat_file'])
-        self.flat_on = d['flat_on']
-        
+        if "flat_file" in d:
+            self.set_flat(d['flat_file'])
+            self.flat_on = d['flat_on']
+        else:
+            self.flat_on = False
     def load(self, f):
         d = json.load(f)
         self.dict2parameters(d)
@@ -484,9 +486,10 @@ class DoubleSLM(SLM):
 
     def set_flat(self, fname):
         super().set_flat(fname,refresh_hologram = False)
-        self.hologram_geometry[2:] = self.flat.shape[::-1]
-        self.copy_flat_shape()
-        self.refresh_hologram()
+        if isinstance(self.flat,np.ndarray) and len(self.flat.shape)==2:
+            self.hologram_geometry[2:] = self.flat.shape[::-1]
+            self.copy_flat_shape()
+            self.refresh_hologram()
         
     def set_double_flat_on(self,on,refresh = True):
         self.double_flat_on = on
@@ -526,12 +529,10 @@ class DoubleSLM(SLM):
         d1 = d["pupil1"]
         d2 = d["pupil2"]
             
-        try:
-            self.double_flat_on = d["double_flat_on"]
-        except:
-            self.double_flat_on = False
         #Avoids refreshing hologram 1 when loading hologram 2 to avoid
         #conflicts
+        
+            
         self.slm2.blockSignals(True)
         self.slm2.dict2parameters(d2)
         self.slm2.blockSignals(False)
@@ -1213,7 +1214,7 @@ class Control(QDialog):
                             self.close_slm = False
                             self.close()
                     except Exception as e:
-                        QMessageBox.information(self, 'Error', str(e))
+                        QMessageBox.information(self, 'Helper load Error', str(e))
 
                     print(fdiag)
             return myf1
@@ -1454,13 +1455,13 @@ class DoubleControl(QDialog):
                 fdiag, _ = QFileDialog.getOpenFileName()
                 if fdiag:
                     try:
-                        with open(fdiag, 'r') as f:
-                            slm.load(f)
-                            self.control1.reinitialize(slm.slm1)
-                            self.control2.reinitialize(slm.slm2)
-                            self.reinitialise_parameters_group()
+                    with open(fdiag, 'r') as f:
+                        slm.load(f)
+                        self.control1.reinitialize(slm.slm1)
+                        self.control2.reinitialize(slm.slm2)
+                        self.reinitialise_parameters_group()
                     except Exception as e:
-                        QMessageBox.information(self, 'Error', str(e))
+                        QMessageBox.information(self, 'Helper load 2 Error', str(e))
 
                     print(fdiag)
             return myf1
