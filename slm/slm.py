@@ -19,7 +19,7 @@ from PyQt5.QtWidgets import (
     QDialog, QLabel, QLineEdit, QPushButton, QComboBox, QGroupBox,
     QGridLayout, QCheckBox, QVBoxLayout, QApplication, QShortcut,
     QSlider, QDoubleSpinBox, QWidget, QFileDialog, QScrollArea,
-    QMessageBox, QTabWidget,
+    QMessageBox, QTabWidget, QFrame,
     )
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
@@ -39,10 +39,11 @@ from slm.ext.czernike import RZern
 
 class Pupil():
 
-    def __init__(self, holo):
+    def __init__(self, holo, settings=None):
         self.log = logging.getLogger(self.__class__.__name__)
         self.holo = holo
 
+        self.name = 'pupil'
         self.rzern = None
         self.pupil_xy = [0.0, 0.0]
         self.pupil_rho = 50.0
@@ -53,9 +54,15 @@ class Pupil():
         self.mask3d_on = 0.0
         self.mask3d_radius = 0.6
         self.mask3d_height = 1.0
+        self.zernike_labels = []
+
+        if settings:
+            self.dict2parameters(settings)
 
     def parameters2dict(self):
         return {
+            'name': self.name,
+            'zernike_labels': self.zernike_labels,
             'pupil_xy': self.pupil_xy,
             'pupil_rho': self.pupil_rho,
             'angle_xy': self.angle_xy,
@@ -68,6 +75,8 @@ class Pupil():
         }
 
     def dict2parameters(self, d):
+        self.name = d['name']
+        self.zernike_labels = d['zernike_labels']
         self.pupil_rho = d['pupil_rho']
         self.aberration = np.array(d['aberration']).reshape((-1, 1))
         self.mask2d_on = d['mask2d_on']
@@ -238,9 +247,10 @@ class Pupil():
 
 class SLM(QDialog):
 
+    pupils = []
     refreshHologramSignal = pyqtSignal()
 
-    def __init__(self, d={}):
+    def __init__(self, settings={}):
         super().__init__(
             parent=None,
             flags=Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
@@ -251,11 +261,12 @@ class SLM(QDialog):
         self.flat_on = 0.0
         self.hologram_geometry = [0, 0, 400, 200]
 
-        self.pupils = [Pupil()]
-
         self.arr = None
         self.qim = None
         self.wrap_value = 0xff
+
+        if settings:
+            self.dict2parameters(settings)
 
     def parameters2dict(self):
         """Stores all relevant parameters in a dictionary. Useful for saving"""
@@ -280,9 +291,8 @@ class SLM(QDialog):
             self.flat_on = False
 
         self.pupils.clear()
-        for pd in d['pupils']:
-            p = Pupil()
-            p.dict2parameters(pd)
+        for ps in d['pupils']:
+            self.pupils.append(Pupil(self, ps))
 
     def load(self, f):
         d = json.load(f)
@@ -408,209 +418,8 @@ class SLM(QDialog):
             qp.end()
 
 
-class DoubleSLM(SLM):
-
-    newHologramSignal = pyqtSignal(np.ndarray)
-
-    def __init__(self):
-        super().__init__()
-        self.double_flat_on = False
-        self.slm2 = SLM()
-        self.slm2.refresh_hologram()
-        self.slm2.refreshHologramSignal.connect(self.refresh_hologram)
-
-        self.slm1 = SLM()
-        self.slm1.refreshHologramSignal.connect(self.refresh_hologram)
-        self.slm1.refresh_hologram()
-
-    def refresh_hologram(self,**kwargs):
-        """rewrite refresh hologram for double SLM"""
-
-        if self.flat_file is None:
-            # [0, 1]
-            self.flat = 0.0
-        else:
-            self.copy_flat_shape()
-        
-        self.setGeometry(*self.hologram_geometry)
-        self.setFixedSize(
-            self.hologram_geometry[2], self.hologram_geometry[3])
-        if (
-                self.arr is None or
-                self.qim is None or
-                self.arr.shape[0] != self.hologram_geometry[3] or
-                self.arr.shape[1] != self.hologram_geometry[2]):
-
-            print('double refresh_hologram(): ALLOCATING arr & qim')
-            self.arr = np.ndarray(
-                shape=(self.hologram_geometry[3], self.hologram_geometry[2]),
-                dtype=np.uint32)
-            self.qim = QImage(
-                self.arr.data, self.arr.shape[1], self.arr.shape[0],
-                QImage.Format_RGB32)
-            
-        # [0, 1] waves
-        background = self.flat_on*self.flat
-        # [-pi, pi] principal branch rads (zero mean)
-        phase = self.slm1.all_phase + self.slm2.all_phase
-
-        if (self.double_flat_on and 
-            self.flat_on and isinstance(self.flat, np.ndarray) and 
-            len(self.flat.shape) == 2):
-            
-            
-            #flipud as in make_phi for instance: all phase patterns are inverted
-            rho1 = np.flipud(self.slm1.rho)
-            rho2 = np.flipud(self.slm2.rho)
-            
-            prho1 = self.slm1.pupil_rho
-            prho2 = self.slm2.pupil_rho
-            
-            def double_position_checker(slm):
-                rho = slm.pupil_rho
-                geom = np.array(slm.hologram_geometry[2:])
-                xy = np.array(slm.pupil_xy) + geom//2
-                print(rho,xy,geom)
-                return (rho + xy < geom).all() and (rho - xy < np.zeros(2)).all()
-            ok_to_pursue = ( double_position_checker(self.slm1) and 
-                            double_position_checker(self.slm2) )
-            if ok_to_pursue:
-                #try:
-                    #use prho1/prho2 to ensure the exact same number of pixels in
-                    #both masks
-                print("ok to pursue")
-                phase[rho1*prho1/prho2<=prho1/prho2] += \
-                    self.flat[::-1,::-1][rho2[::-1,::-1]<=prho1/prho2]*2*np.pi
-                phase[rho2*prho2/prho1<=prho2/prho1] += \
-                    self.flat[::-1,::-1][rho1[::-1,::-1]<=prho2/prho1]*2*np.pi
-            else:
-                print("Double flat disabled")
-                #self.set_double_flat_on(False,refresh=False)
-            """except Exception as e:
-                message = "Double flat disabled: both pupils must be in the FOV"
-                message+="\n"+str(e)
-                QMessageBox.information(self, 
-                                        'Error', message)"""
-       
-        phase /= (2*np.pi)  # phase in waves
-        gray = background+phase
-        
-        
-        def printout(t, x):
-            if isinstance(x, np.ndarray):
-                print('{} [{:g}, {:g}] {:g}'.format(
-                    t, x.min(), x.max(), x.mean()))
-            else:
-                print(t + ' [0.0, 0.0] 0.0')
-
-        printout('gray', gray)
-        gray -= np.floor(gray.min())
-        assert(gray.min() >= -1e-9)
-        print("wrap",self.wrap_value)
-        gray *= self.wrap_value
-        printout('gray', gray)
-        gray %= self.wrap_value
-        printout('gray', gray)
-        assert(gray.min() >= 0)
-        assert(gray.max() <= 255)
-        gray = gray.astype(np.uint8)
-        
-        self.arr[:] = gray.astype(np.uint32)*0x010101
-            
-        self.newHologramSignal.emit(gray)
-        self.update()
-
-    def set_flat(self, fname):
-        super().set_flat(fname,refresh_hologram = False)
-        if isinstance(self.flat,np.ndarray) and len(self.flat.shape)==2:
-            self.hologram_geometry[2:] = self.flat.shape[::-1]
-            self.copy_flat_shape()
-            self.refresh_hologram()
-        
-    def set_double_flat_on(self,on,refresh = True):
-        self.double_flat_on = on
-        if refresh:
-            self.refresh_hologram()
-        
-    #Overrinding methods for compatibility
-    def set_hologram_geometry(self, geometry):
-        #Disconnection to avoid conflict when resizing
-        self.geometry = geometry
-        self.slm2.blockSignals(True)
-        self.slm2.set_hologram_geometry(geometry)
-        self.slm2.blockSignals(False)
-        
-        self.slm1.set_hologram_geometry(geometry)
-        
-    def set_wrap_value(self,wrap_value):
-        self.wrap_value = wrap_value
-
-    def copy_flat_shape(self):
-        self.slm2.hologram_geometry[2] = self.flat.shape[1]
-        self.slm2.hologram_geometry[3] = self.flat.shape[0]   
-        
-        self.slm1.hologram_geometry[2] = self.flat.shape[1]
-        self.slm1.hologram_geometry[3] = self.flat.shape[0]  
-        
-        self.slm1.blockSignals(True)
-        self.slm1.refresh_hologram()
-        self.slm1.blockSignals(False)
-        
-        self.slm2.blockSignals(True)
-        self.slm2.refresh_hologram()
-        self.slm2.blockSignals(False)
-        
-    def load(self, f):
-        d = json.load(f)
-        d1 = d["pupil1"]
-        d2 = d["pupil2"]
-            
-        #Avoids refreshing hologram 1 when loading hologram 2 to avoid
-        #conflicts
-        
-            
-        self.slm2.blockSignals(True)
-        self.slm2.dict2parameters(d2)
-        self.slm2.blockSignals(False)
-        
-        self.slm1.blockSignals(True)
-        self.slm1.dict2parameters(d1)
-        self.slm1.blockSignals(False)
-
-        self.hologram_geometry = d1["hologram_geometry"]
-        self.wrap_value = d1["wrap_value"]
-        
-        if "common_parameters" in d:
-            d3 = d["common_parameters"]
-            self.dict2parameters(d3)
-        self.refresh_hologram()
-        return d
-    
-    def save(self, f, merge=None):
-        d1 = self.slm1.parameters2dict()
-        d2 = self.slm2.parameters2dict()
-        d3 = self.parameters2dict()
-        d = {"pupil1":d1,
-             "pupil2":d2,
-             "common_parameters": d3,
-             "double_flat_on":self.double_flat_on}
-        if merge:
-            merge.update(d)
-        else:
-            merge = d
-        json.dump(merge, f)
-    
-    def paintEvent(self, e):
-        print("double paint",self.qim)
-        if self.qim is not None:
-            qp = QPainter()
-            qp.begin(self)
-            qp.drawImage(0, 0, self.qim)
-            qp.end()
-
-
 class PhaseDisplay(QWidget):
-    # TODO pthread me or the SLM class itself
+    # TODO use regular matplotlib
     dirty = False
     size = [0, 0]
     phase = None
@@ -674,9 +483,9 @@ class PhaseDisplay(QWidget):
             qp.end()
 
 
-class MatplotlibWindow(QDialog):
+class MatplotlibWindow(QFrame):
 
-    def __init__(self, parent=None,toolbar=False,figsize=None):
+    def __init__(self, parent=None, toolbar=False, figsize=None):
         super().__init__(parent)
 
         # a figure instance to plot on
@@ -701,18 +510,45 @@ class MatplotlibWindow(QDialog):
         layout.addWidget(self.canvas)
         self.setLayout(layout)
 
-        
-    def update_array(self,arr):
+    def update_array(self, arr):
         self.ax.cla()
-        self.ax.imshow(arr,cmap="gray")
+        self.ax.imshow(arr, cmap="gray")
         self.ax.axis("off")
         self.canvas.draw()
 
 
-class Control(QDialog):
-    # TODO refactor and cleanup awful Qt code
+class PupilPanel(QFrame):
 
-    close_slm = True
+    sig_pupil = pyqtSignal()
+
+    def __init__(self, pupil, parent=None):
+        """Subclass for a control GUI.
+        Parameters:
+            slm: SLM instance
+            settings: dict, saved settings
+            is_parent: bool. Useful in the case of doublepass to determine
+                for instance which widget determines the overall geometry"""
+        super().__init__(parent)
+
+        self.pupil = pupil
+
+        self.make_pupil_tab()
+        self.make_2d_tab()
+        self.make_3d_tab()
+        self.make_phase_tab()
+        self.make_grating_tab()
+        self.make_aberration_tab()
+
+        top = QGridLayout()
+        self.top = top
+        top.addWidget(self.group_phase, 0, 0, 4, 1)
+        top.addWidget(self.group_pupil, 0, 1)
+        top.addWidget(self.group_grating, 1, 1)
+        top.addWidget(self.group_2d, 2, 1)
+        top.addWidget(self.group_3d, 3, 1)
+        top.addWidget(self.group_aberration, 4, 0, 2, 2)
+        self.setLayout(top)
+        self.top = top
 
     @staticmethod
     def helper1(name, labels, mins, handlers, curvals, Validator):
@@ -732,47 +568,25 @@ class Control(QDialog):
         group.setLayout(l1)
         return group
 
-    @staticmethod
-    def helper_boolupdate(mycallback, myupdate):
+    def helper_boolupdate(self, mycallback):
         def f(i):
             mycallback(i)
-            myupdate()
+            self.sig_pupil.emit()
         return f
 
-    def make_geometry_tab(self, slm):
-        def handle_geometry(ind, le):
-            def f():
-                try:
-                    ival = int(le.text())
-                except Exception:
-                    le.setText(str(slm.hologram_geometry[ind]))
-                    return
-                slm.hologram_geometry[ind] = ival
-                slm.set_hologram_geometry(slm.hologram_geometry)
-                le.setText(str(slm.hologram_geometry[ind]))
-            return f
-
-        self.group_geometry = self.helper1(
-            'Geometry',
-            ['x', 'y', 'width', 'height'],
-            [None, None, 100, 100],
-            [handle_geometry]*4,
-            slm.hologram_geometry, QIntValidator)
-
-    def make_pupil_tab(self, slm):
-
+    def make_pupil_tab(self):
         def handle_pupil_xy(ind, le):
             def f():
                 try:
                     fval = float(le.text())
                     print(fval)
                 except Exception:
-                    le.setText(str(slm.pupil_xy[ind]))
+                    le.setText(str(self.pupil.pupil_xy[ind]))
                     return
-                slm.pupil_xy[ind] = fval
-                slm.set_pupil_xy(slm.pupil_xy)
-                le.setText(str(slm.pupil_xy[ind]))
-                slm.update()
+                self.pupil.pupil_xy[ind] = fval
+                self.pupil.set_pupil_xy(self.pupil.pupil_xy)
+                le.setText(str(self.pupil.pupil_xy[ind]))
+                self.sig_pupil.emit()
             return f
 
         def handle_pupil_rho(ind, le):
@@ -780,11 +594,11 @@ class Control(QDialog):
                 try:
                     fval = float(le.text())
                 except Exception:
-                    le.setText(str(slm.pupil_rho))
+                    le.setText(str(self.pupil.pupil_rho))
                     return
-                slm.set_pupil_rho(fval)
-                le.setText(str(slm.pupil_rho))
-                slm.update()
+                self.pupil.set_pupil_rho(fval)
+                le.setText(str(self.pupil.pupil_rho))
+                self.sig_pupil.emit()
             return f
 
         self.group_pupil = self.helper1(
@@ -792,69 +606,21 @@ class Control(QDialog):
             ['x0', 'y0', 'radius'],
             [None, None, 10],
             [handle_pupil_xy, handle_pupil_xy, handle_pupil_rho],
-            [slm.pupil_xy[0], slm.pupil_xy[1], slm.pupil_rho],
+            [self.pupil.pupil_xy[0], self.pupil.pupil_xy[1], self.pupil.pupil_rho],
             QDoubleValidator)
 
-    def make_flat_tab(self, slm):
-        def helper_load_flat1():
-            def myf1():
-                fdiag, _ = QFileDialog.getOpenFileName()
-                if fdiag:
-                    slm.set_flat(fdiag)
-                    self.reinitialize(slm)
-            return myf1
-
-        g = QGroupBox('Flattening')
-        l1 = QGridLayout()
-        cboxlf = QCheckBox('flat on')
-        cboxlf.toggled.connect(self.helper_boolupdate(
-            slm.set_flat_on, slm.update))
-        cboxlf.setChecked(slm.flat_on)
-        l1.addWidget(cboxlf, 0, 0)
-        loadbut = QPushButton('load')
-        loadbut.clicked.connect(helper_load_flat1())
-        l1.addWidget(loadbut, 0, 1)
-        g.setLayout(l1)
-
-        self.group_flat = g
-
-    def make_wrap_tab(self, slm):
-        g = QGroupBox('Wrap value')
-        l1 = QGridLayout()
-        lewrap = QLineEdit(str(slm.wrap_value))
-        lewrap.setMaximumWidth(50)
-        lewrap.setValidator(QIntValidator(1, 255))
-
-        def handle_wrap(lewrap1):
-            def f():
-                try:
-                    ival = int(lewrap1.text())
-                except Exception:
-                    lewrap1.setText(str(slm.wrap_value))
-                    return
-                slm.set_wrap_value(ival)
-                slm.update()
-                lewrap1.setText(str(slm.wrap_value))
-            return f
-
-        lewrap.editingFinished.connect(handle_wrap(lewrap))
-        l1.addWidget(lewrap, 0, 0)
-        g.setLayout(l1)
-
-        self.group_wrap = g
-
-    def make_2d_tab(self, slm):
+    def make_2d_tab(self):
         g = QGroupBox('2D STED')
         l1 = QGridLayout()
         c = QCheckBox('2D on')
-        c.setChecked(slm.mask2d_on)
+        c.setChecked(self.pupil.mask2d_on)
         c.toggled.connect(self.helper_boolupdate(
-            slm.set_mask2d_on, slm.update))
+            self.pupil.set_mask2d_on))
         l1.addWidget(c, 0, 0)
         sign2d = QComboBox()
         sign2d.addItem('+1')
         sign2d.addItem('-1')
-        if slm.mask2d_sign == 1:
+        if self.pupil.mask2d_sign == 1:
             sign2d.setCurrentIndex(0)
         else:
             sign2d.setCurrentIndex(1)
@@ -865,23 +631,23 @@ class Control(QDialog):
                     fun(float(1))
                 else:
                     fun(float(-1))
-                slm.update()
+                self.sig_pupil.emit()
             return f
 
-        sign2d.activated.connect(toggle_float(slm.set_mask2d_sign))
+        sign2d.activated.connect(toggle_float(self.pupil.set_mask2d_sign))
         l1.addWidget(sign2d, 0, 1)
         g.setLayout(l1)
 
         self.group_2d = g
 
-    def make_3d_tab(self, slm):
+    def make_3d_tab(self):
         g = QGroupBox('3D STED')
 
         def update_radius(slider, what):
             def f(r):
                 slider.setValue(int(r*100))
                 what(r)
-                slm.update()
+                self.sig_pupil.emit()
             return f
 
         def update_spinbox(s):
@@ -891,9 +657,9 @@ class Control(QDialog):
 
         l1 = QGridLayout()
         c = QCheckBox('3D on')
-        c.setChecked(slm.mask3d_on)
+        c.setChecked(self.pupil.mask3d_on)
         c.toggled.connect(self.helper_boolupdate(
-            slm.set_mask3d_on, slm.update))
+            self.pupil.set_mask3d_on))
         l1.addWidget(c, 0, 0)
         slider = QSlider(Qt.Horizontal)
         slider.setMinimum(0)
@@ -902,15 +668,15 @@ class Control(QDialog):
         slider.setTickPosition(QSlider.TicksBothSides)
         slider.setTickInterval(20)
         slider.setSingleStep(0.1)
-        slider.setValue(int(100*slm.mask3d_radius))
+        slider.setValue(int(100*self.pupil.mask3d_radius))
         spinbox = QDoubleSpinBox()
         spinbox.setRange(0.0, 1.0)
         spinbox.setSingleStep(0.01)
-        spinbox.setValue(slm.mask3d_radius)
+        spinbox.setValue(self.pupil.mask3d_radius)
         slider.valueChanged.connect(update_spinbox(spinbox))
 
         spinbox.valueChanged.connect(update_radius(
-            slider, slm.set_mask3d_radius))
+            slider, self.pupil.set_mask3d_radius))
         l1.addWidget(QLabel('radius'), 0, 1)
         l1.addWidget(spinbox, 0, 2)
         l1.addWidget(slider, 0, 3)
@@ -922,15 +688,15 @@ class Control(QDialog):
         slider.setTickPosition(QSlider.TicksBothSides)
         slider.setTickInterval(40)
         slider.setSingleStep(0.1)
-        slider.setValue(int(100*slm.mask3d_height))
+        slider.setValue(int(100*self.pupil.mask3d_height))
         spinbox = QDoubleSpinBox()
         spinbox.setRange(0.0, 2.0)
         spinbox.setSingleStep(0.01)
-        spinbox.setValue(slm.mask3d_height)
+        spinbox.setValue(self.pupil.mask3d_height)
         slider.valueChanged.connect(update_spinbox(spinbox))
 
         spinbox.valueChanged.connect(update_radius(
-            slider, slm.set_mask3d_height))
+            slider, self.pupil.set_mask3d_height))
         l1.addWidget(QLabel('height'), 1, 1)
         l1.addWidget(spinbox, 1, 2)
         l1.addWidget(slider, 1, 3)
@@ -948,7 +714,7 @@ class Control(QDialog):
         self.group_phase = g
         self.phase_display = phase_display
 
-    def make_aberration_tab(self, slm, phase_display):
+    def make_aberration_tab(self):
         def default_zernike_name(i, n, m):
             if i == 1:
                 return 'piston'
@@ -982,9 +748,7 @@ class Control(QDialog):
         toplay = QGridLayout()
         top.setLayout(toplay)
         labzm = QLabel('max radial order')
-        print(slm)
-        print(slm.rzern)
-        lezm = QLineEdit(str(slm.rzern.n))
+        lezm = QLineEdit(str(self.pupil.rzern.n))
         lezm.setMaximumWidth(50)
         lezm.setValidator(QIntValidator(1, 255))
         reset = QPushButton('reset')
@@ -1007,12 +771,13 @@ class Control(QDialog):
                 slider.blockSignals(True)
                 slider.setValue(fto100(r, amp))
                 slider.blockSignals(False)
-                slm.aberration[ind, 0] = r
-                slm.set_aberration(slm.aberration)
-                slm.update()
+                self.pupil.aberration[ind, 0] = r
+                self.pupil.set_aberration(self.pupil.aberration)
+                self.sig_pupil.emit()
 
-                phase_display.update_phase(slm.rzern.n, slm.aberration)
-                phase_display.update()
+                self.phase_display.update_phase(
+                    self.pupil.rzern.n, self.pupil.aberration)
+                self.phase_display.update()
             return f
 
         def update_amp(spinbox, slider, le, i):
@@ -1020,7 +785,7 @@ class Control(QDialog):
                 amp = float(le.text())
                 spinbox.setRange(-amp, amp)
                 spinbox.setValue(spinbox.value())
-                slider.setValue(fto100(slm.aberration[i, 0], le))
+                slider.setValue(fto100(self.pupil.aberration[i, 0], le))
             return f
 
         def update_zlabel(le, settings, i):
@@ -1035,9 +800,9 @@ class Control(QDialog):
             return f
 
         def update_zernike_rows():
-            mynk = slm.rzern.nk
-            ntab = slm.rzern.ntab
-            mtab = slm.rzern.mtab
+            mynk = self.pupil.rzern.nk
+            ntab = self.pupil.rzern.ntab
+            mtab = self.pupil.rzern.mtab
             if len(zernike_rows) < mynk:
                 for i in range(len(zernike_rows), mynk):
                     lab = QLabel(
@@ -1045,7 +810,7 @@ class Control(QDialog):
                             i + 1, ntab[i], mtab[i]))
                     slider = QSlider(Qt.Horizontal)
                     spinbox = QDoubleSpinBox()
-                    maxamp = max((4, slm.aberration[i, 0]))
+                    maxamp = max((4, self.pupil.aberration[i, 0]))
                     if str(i) in self.settings['zernike_labels'].keys():
                         zname = self.settings['zernike_labels'][str(i)]
                     else:
@@ -1065,10 +830,10 @@ class Control(QDialog):
                     slider.setTickPosition(QSlider.TicksBothSides)
                     slider.setTickInterval(20)
                     slider.setSingleStep(0.1)
-                    slider.setValue(fto100(slm.aberration[i, 0], amp))
+                    slider.setValue(fto100(self.pupil.aberration[i, 0], amp))
                     spinbox.setRange(-maxamp, maxamp)
                     spinbox.setSingleStep(0.01)
-                    spinbox.setValue(slm.aberration[i, 0])
+                    spinbox.setValue(self.pupil.aberration[i, 0])
 
                     hand1 = update_spinbox(spinbox, amp)
                     hand2 = update_coeff(slider, i, amp)
@@ -1123,21 +888,21 @@ class Control(QDialog):
             try:
                 ival = int(lezm.text())
             except Exception:
-                lezm.setText(str(slm.rzern.n))
+                lezm.setText(str(self.pupil.rzern.n))
                 return
             n = (ival + 1)*(ival + 2)//2
             newab = np.zeros((n, 1))
-            minn = min((n, slm.rzern.n))
-            newab[:minn, 0] = slm.aberration[:minn, 0]
-            slm.set_aberration(newab)
-            slm.update()
+            minn = min((n, self.pupil.rzern.n))
+            newab[:minn, 0] = self.pupil.aberration[:minn, 0]
+            self.pupil.set_aberration(newab)
+            self.sig_pupil.emit()
 
             update_zernike_rows()
-            phase_display.update_phase(slm.rzern.n, slm.aberration)
+            phase_display.update_phase(self.pupil.rzern.n, self.pupil.aberration)
             phase_display.update()
-            lezm.setText(str(slm.rzern.n))
+            lezm.setText(str(self.pupil.rzern.n))
 
-        phase_display.update_phase(slm.rzern.n, slm.aberration)
+        self.phase_display.update_phase(self.pupil.rzern.n, self.pupil.aberration)
         zernike_rows = list()
         update_zernike_rows()
 
@@ -1146,7 +911,7 @@ class Control(QDialog):
 
         self.group_aberration = top
 
-    def make_grating_tab(self,slm):
+    def make_grating_tab(self):
         """Position tab is meant to help positionning the phase mask
         without using tip and tilt"""
         pos = QGroupBox('Blazed grating')
@@ -1167,24 +932,24 @@ class Control(QDialog):
         slider_x.setMinimum(0)
         slider_x.setMaximum(multiplier)
         slider_x.setSingleStep(0.01)
-        slider_x.setValue(fto100(slm.angle_xy[0], amp))
+        slider_x.setValue(fto100(self.pupil.angle_xy[0], amp))
 
         spinbox_x = QDoubleSpinBox()
         spinbox_x.setRange(-amp, amp)
         spinbox_x.setSingleStep(0.01)
-        spinbox_x.setValue(slm.angle_xy[0])
+        spinbox_x.setValue(self.pupil.angle_xy[0])
 
         # y position
         slider_y = QSlider(Qt.Horizontal)
         slider_y.setMinimum(0)
         slider_y.setMaximum(multiplier)
         slider_y.setSingleStep(0.01)
-        slider_y.setValue(fto100(slm.angle_xy[1], amp))
+        slider_y.setValue(fto100(self.pupil.angle_xy[1], amp))
 
         spinbox_y = QDoubleSpinBox()
         spinbox_y.setRange(-amp, amp)
         spinbox_y.setSingleStep(0.01)
-        spinbox_y.setValue(slm.angle_xy[1])
+        spinbox_y.setValue(self.pupil.angle_xy[1])
 
         # x position
         poslay.addWidget(labx, 0, 0)
@@ -1196,25 +961,19 @@ class Control(QDialog):
         poslay.addWidget(spinbox_y, 0, 5)
 
         def update_coeff(slider, amp, axis):
-
             def f(r):
-                print("UPDATE COEFF SA MERE LA P")
                 slider.blockSignals(True)
                 slider.setValue(fto100(r, amp))
                 slider.blockSignals(False)
-                slm.set_anglexy(r,axis)
-                slm.update()
-                """self.slm.angle_xy[axis] = r
-                self.slm.refresh_hologram()"""
+                self.pupil.set_anglexy(r, axis)
+                self.sig_pupil.emit()
             return f
 
         def update_spinbox(s, amp):
-
             def f(t):
                 maxrad = float(amp)
                 s.setValue(t/multiplier*(2*maxrad) - maxrad)
             return f
-
 
         hand1 = update_spinbox(spinbox_x, 4)
         hand2 = update_coeff(slider_x, 4, 0)
@@ -1227,183 +986,6 @@ class Control(QDialog):
         spinbox_y.valueChanged.connect(hand4)
 
         self.group_grating = pos
-
-    def make_file_tab(self, slm):
-        g = QGroupBox('File')
-        load = QPushButton('load')
-        save = QPushButton('save')
-        l1 = QGridLayout()
-        l1.addWidget(load, 0, 1)
-        l1.addWidget(save, 0, 0)
-        g.setLayout(l1)
-
-        def helper_load():
-            def myf1():
-                fdiag, _ = QFileDialog.getOpenFileName()
-                if fdiag:
-                    try:
-                        with open(fdiag, 'r') as f:
-                            d = slm.load(f)['control']
-                            Control(self.slm, d).show()
-                            self.close_slm = False
-                            self.close()
-                    except Exception as e:
-                        QMessageBox.information(self, 'Helper load Error', str(e))
-
-                    print(fdiag)
-            return myf1
-
-        def helper_save():
-            # self.setGeometry(*self.hologram_geometry)
-            def myf1():
-                curg = self.geometry()
-                fdiag, _ = QFileDialog.getSaveFileName(
-                    directory=datetime.now().strftime('%Y%m%d_%H%M%S.json'))
-                if fdiag:
-                    try:
-                        with open(fdiag, 'w') as f:
-                            self.settings['window'] = [
-                                curg.x(), curg.y(),
-                                curg.width(), curg.height()]
-                            slm.save(f, {'control': self.settings})
-                    except Exception as e:
-                        QMessageBox.information(self, 'Error', str(e))
-
-                    print(fdiag)
-            return myf1
-
-        load.clicked.connect(helper_load())
-        save.clicked.connect(helper_save())
-
-        self.group_file = g
-
-    def __init__(self, slm, settings,is_parent=True):
-        """Subclass for a control GUI.
-        Parameters:
-            slm: SLM instance
-            settings: dict, saved settings
-            is_parent: bool. Useful in the case of doublepass to determine
-                for instance which widget determines the overall geometry"""
-        super().__init__(parent=None)
-        self.setWindowTitle(
-            'SLM ' + version.__version__ + ' ' + version.__date__)
-        QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
-
-        self.settings = settings
-        
-        if 'window' in settings.keys():
-            self.setGeometry(
-                settings['window'][0], settings['window'][1],
-                settings['window'][2], settings['window'][3])
-            
-        self.is_parent = is_parent
-        
-        self.make_geometry_tab(slm)
-        self.make_pupil_tab(slm)
-        self.make_flat_tab(slm)
-        self.make_wrap_tab(slm)
-        self.make_2d_tab(slm)
-        self.make_3d_tab(slm)
-        self.make_phase_tab()
-        self.make_grating_tab(slm)
-        self.make_aberration_tab(slm, self.phase_display)
-        self.make_file_tab(slm)
-
-        top = QGridLayout()
-        self.top = top
-        if is_parent: #Single pupil case, we add all the buttons
-            top.addWidget(self.group_geometry, 0, 0, 1, 2)
-            top.addWidget(self.group_pupil, 1, 0)
-            top.addWidget(self.group_wrap, 1, 1)
-            
-            top.addWidget(self.group_flat, 2, 0)
-            top.addWidget(self.group_2d, 3, 0)
-            top.addWidget(self.group_3d, 4, 0)
-            top.addWidget(self.group_phase, 0, 2, 2, 1)
-            top.addWidget(self.group_grating, 2, 1, 1, 2)
-            top.addWidget(self.group_aberration, 3, 1, 3, 2)
-            top.addWidget(self.group_file, 5, 0)
-        else:
-            #!!!
-            #top.addWidget(self.group_geometry, 0, 0, 1, 2)            
-            #top.addWidget(self.group_wrap, 1, 1)
-            #top.addWidget(self.group_flat, 2, 0)
-            #top.addWidget(self.group_file, 5, 0)
-
-            top.addWidget(self.group_phase, 0, 0, 4, 1)
-            top.addWidget(self.group_pupil, 0, 1)
-            top.addWidget(self.group_grating, 1, 1)
-            top.addWidget(self.group_2d, 2, 1)
-            top.addWidget(self.group_3d, 3, 1)
-
-            top.addWidget(self.group_aberration, 4, 0, 2, 2)
-        self.setLayout(top)
-
-        self.top = top
-        self.slm = slm
-        # self.resize(QDesktopWidget().availableGeometry().size()*0.5)
-
-    def reinitialize(self,slm):
-        """Useful after loading a new correction file, sets all parameters to
-        correct value"""
-        self.group_pupil.deleteLater()
-        self.group_2d.deleteLater()
-        self.group_3d.deleteLater()
-        self.group_phase.deleteLater()
-        self.group_grating.deleteLater()
-        self.group_aberration.deleteLater()
-        
-        #if self.is_parent:
-        self.group_wrap.deleteLater()
-        self.group_flat.deleteLater()
-        self.group_file.deleteLater()
-        self.group_geometry.deleteLater()
-        
-        self.make_pupil_tab(slm)
-        self.make_2d_tab(slm)
-        self.make_3d_tab(slm)
-        self.make_phase_tab()
-        self.make_aberration_tab(slm, self.phase_display)
-        self.make_grating_tab(slm)
-        
-        #if self.is_parent:
-        self.make_wrap_tab(slm)
-        self.make_file_tab(slm)
-        self.make_geometry_tab(slm)
-        self.make_flat_tab(slm)
-    
-        if self.is_parent: #Single pupil case, we add all the buttons
-            self.top.addWidget(self.group_geometry, 0, 0, 1, 2)
-            self.top.addWidget(self.group_pupil, 1, 0)
-            self.top.addWidget(self.group_wrap, 1, 1)
-            
-            self.top.addWidget(self.group_flat, 2, 0)
-            self.top.addWidget(self.group_2d, 3, 0)
-            self.top.addWidget(self.group_3d, 4, 0)
-            self.top.addWidget(self.group_phase, 0, 2, 2, 1)
-            self.top.addWidget(self.group_grating, 2, 1, 1, 2)
-            self.top.addWidget(self.group_aberration, 3, 1, 3, 2)
-            self.top.addWidget(self.group_file, 5, 0)
-        else:
-            #!!!
-            #top.addWidget(self.group_geometry, 0, 0, 1, 2)            
-            #top.addWidget(self.group_wrap, 1, 1)
-            #top.addWidget(self.group_flat, 2, 0)
-            #top.addWidget(self.group_file, 5, 0)
-            self.top.addWidget(self.group_phase, 0, 0, 4, 1)
-            self.top.addWidget(self.group_pupil, 0, 1)
-            self.top.addWidget(self.group_grating, 1, 1)
-            self.top.addWidget(self.group_2d, 2, 1)
-            self.top.addWidget(self.group_3d, 3, 1)
-
-            self.top.addWidget(self.group_aberration, 4, 0, 2, 2)
-        
-        print("end reinitialize")
-
-    def closeEvent(self, event):
-        if self.close_slm:
-            self.slm.close()
-        super().close()
 
     def keyPressEvent(self, event):
         pass
@@ -1571,42 +1153,39 @@ class SingleZernikeControl:
         self.h5_append('z2', z2)
 
 
-class DoubleControl(QDialog):
-
+class ControlWindow(QDialog):
     can_close = True
     close_slm = True
     sig_acquire = pyqtSignal(tuple)
     sig_release = pyqtSignal(tuple)
 
-    def __init__(self, double_slm, settings):
+    def __init__(self, settings):
         super().__init__(parent=None)
+        self.slm = SLM(settings['slm'])
+        self.settings = settings
         self.mutex = QMutex()
+
         self.setWindowTitle(
             'SLM ' + version.__version__ + ' ' + version.__date__)
         QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
 
-        self.settings = settings
-
-        if 'window' in settings.keys():
+        if 'controlwindow' in settings.keys():
             self.setGeometry(
-                settings['window'][0], settings['window'][1],
-                settings['window'][2], settings['window'][3])
+                settings['controlwindow'][0], settings['controlwindow'][1],
+                settings['controlwindow'][2], settings['controlwindow'][3])
 
-        self.double_slm = double_slm
+        self.pupilsTab = QTabWidget()
+        for p in self.slm.pupils:
+            self.pupilsTab.addTab(PupilPanel(p), p.get_name())
 
-        self.control1 = Control(self.double_slm.slm1,settings,is_parent=False)
-        self.control2 = Control(self.double_slm.slm2,{},is_parent = False)
-        
-        self.make_pupils_tabs()
-        self.make_geometry_tab(double_slm)
+        self.make_geometry_tab()
         self.make_general_display()
         self.make_parameters_group()
-        
+
         self.top = QGridLayout()
-        self.top.addWidget(self.display,0,0)
-        self.top.addWidget(self.pupilsTab,0,1,2,1)
-        self.top.addWidget(self.parametersGroup,1,0)
-        
+        self.top.addWidget(self.display, 0, 0)
+        self.top.addWidget(self.pupilsTab, 0, 1, 2, 1)
+        self.top.addWidget(self.parametersGroup, 1, 0)
         self.setLayout(self.top)
 
         def make_release_hand():
@@ -1630,7 +1209,6 @@ class DoubleControl(QDialog):
         self.sig_release.connect(make_release_hand())
         self.sig_acquire.connect(make_acquire_hand())
 
-        
     @staticmethod
     def helper_boolupdate(mycallback, myupdate):
         def f(i):
@@ -1656,14 +1234,9 @@ class DoubleControl(QDialog):
         group.setLayout(l1)
         return group
 
-    def make_pupils_tabs(self):
-        self.pupilsTab = QTabWidget()
-        self.pupilsTab.addTab(self.control1,"Pupil 1")
-        self.pupilsTab.addTab(self.control2,"Pupil 2")
-
     def make_general_display(self):
-        self.display = MatplotlibWindow(figsize = (8,6))
-        self.double_slm.newHologramSignal.connect(self.display.update_array)
+        self.display = MatplotlibWindow(figsize=(8, 6))
+        self.slm.newHologramSignal.connect(self.display.update_array)
     
     def make_file_tab(self, slm):
         """Rewriting the file tab to facilitate loading of 2-pupil files"""
