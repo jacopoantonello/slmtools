@@ -6,30 +6,32 @@ import numpy as np
 import matplotlib.pyplot as plt
 import json
 import argparse
+import logging
 
 from datetime import datetime
 from math import sqrt
 from scipy.misc import imread
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QImage, QPainter, QDoubleValidator
-from PyQt5.QtGui import QIntValidator, QKeySequence
-from PyQt5.QtWidgets import QDialog, QLabel, QLineEdit, QPushButton, QComboBox
-from PyQt5.QtWidgets import QGroupBox, QGridLayout, QCheckBox, QVBoxLayout
-from PyQt5.QtWidgets import QApplication, QShortcut, QSlider, QDoubleSpinBox
-from PyQt5.QtWidgets import QWidget, QFileDialog, QScrollArea, QMessageBox
-from PyQt5.QtWidgets import QTabWidget
-from PyQt5.QtCore import pyqtSignal
+
+from PyQt5.QtCore import Qt, QMutex, pyqtSignal
+from PyQt5.QtGui import (
+    QImage, QPainter, QDoubleValidator, QIntValidator, QKeySequence)
+from PyQt5.QtWidgets import (
+    QDialog, QLabel, QLineEdit, QPushButton, QComboBox, QGroupBox,
+    QGridLayout, QCheckBox, QVBoxLayout, QApplication, QShortcut,
+    QSlider, QDoubleSpinBox, QWidget, QFileDialog, QScrollArea,
+    QMessageBox, QTabWidget,
+    )
 
 from qtconsole.rich_jupyter_widget import RichJupyterWidget
 from qtconsole.inprocess import QtInProcessKernelManager
 
 from slm import version
-#import version
 from slm.ext.czernike import RZern
-#from ext.czernike import RZern
+
 
 """SLM - spatial light modulator (SLM) controller.
 """
+
 
 class SLM(QDialog):
     refreshHologramSignal = pyqtSignal()
@@ -250,7 +252,7 @@ class SLM(QDialog):
         tt = tt/value_max*2*np.pi
         tt[self.rho >= 1.0] = 0
         self.grating = np.flipud(tt)
-        
+
     def make_phi(self):
         # [-pi, pi] principal branch
         phi = np.pi + self.rzern.eval_grid(self.aberration)
@@ -373,7 +375,7 @@ class SLM(QDialog):
 
 
 class DoubleSLM(SLM):
-    
+
     newHologramSignal = pyqtSignal(np.ndarray)
 
     def __init__(self):
@@ -382,11 +384,11 @@ class DoubleSLM(SLM):
         self.slm2 = SLM()
         self.slm2.refresh_hologram()
         self.slm2.refreshHologramSignal.connect(self.refresh_hologram)
-        
+
         self.slm1 = SLM()
         self.slm1.refreshHologramSignal.connect(self.refresh_hologram)
         self.slm1.refresh_hologram()
-        
+
     def refresh_hologram(self,**kwargs):
         """rewrite refresh hologram for double SLM"""
 
@@ -674,7 +676,7 @@ class MatplotlibWindow(QDialog):
         self.ax.imshow(arr,cmap="gray")
         self.ax.axis("off")
         self.canvas.draw()
-        
+
 class Control(QDialog):
     # TODO refactor and cleanup awful Qt code
 
@@ -1373,12 +1375,179 @@ class Control(QDialog):
     def keyPressEvent(self, event):
         pass
 
+
+def get_default_parameters():
+    return {
+        'control': {
+            'SingleZernike': {
+                'include': [],
+                'exclude': [1, 2, 3, 4],
+                'min': 5,
+                'max': 6,
+                'all': 1,
+                'pupil': 1,
+                },
+            'DoubleZernike': {
+                'include': [],
+                'exclude': [1, 2, 3, 4],
+                'min': 5,
+                'max': 6,
+                'all': 1,
+                },
+            }
+        }
+
+
+def get_parameters_info():
+    return {
+        'control': {
+            'SingleZernike': {
+                'include': (list, int, 'Zernike indices to include'),
+                'exclude': (list, int, 'Zernike indices to include'),
+                'min': (int, (1, None), 'Minimum Zernike index'),
+                'max': (int, (1, None), 'Maximum Zernike index'),
+                'all': (
+                    int, (0, 1), 'Use all Zernike available in calibration'),
+                'pupil': (
+                    int, (1, 2), 'SLM pupil number'),
+                },
+            'DoubleZernike': {
+                'include': (list, int, 'Zernike indices to include'),
+                'exclude': (list, int, 'Zernike indices to include'),
+                'min': (int, (1, None), 'Minimum Zernike index'),
+                'max': (int, (1, None), 'Maximum Zernike index'),
+                'all': (
+                    int, (0, 1), 'Use all Zernike available in calibration'),
+                },
+            }
+        }
+
+
+def merge_pars(dp, up):
+    p = {}
+    for k, v in dp.items():
+        if type(v) == dict:
+            options = list(v.keys())
+            if k not in up:
+                p[k] = {options[0]: dp[k][options[0]]}
+            else:
+                choice = list(up[k].keys())
+                assert(len(choice) == 1)
+                choice = choice[0]
+                assert(choice in dp[k].keys())
+                p[k] = {choice: merge_pars(dp[k][choice], up[k][choice])}
+        else:
+            if k in up:
+                p[k] = up[k]
+            else:
+                p[k] = dp[k]
+    return p
+
+
+def get_noll_indices(params):
+    p = params['control']
+    if 'Zernike' in p:
+        z = p['Zernike']
+        noll_min = z['min']
+        noll_max = z['max']
+        minclude = z['include']
+        mexclude = z['exclude']
+    else:
+        RuntimeError()
+
+    mrange = np.arange(noll_min, noll_max + 1)
+    zernike_indices = np.setdiff1d(
+        np.union1d(np.unique(mrange), np.unique(minclude)),
+        np.unique(mexclude))
+    return zernike_indices
+
+
+class SingleZernikeControl:
+
+    def __init__(self, slm, pars={}, h5f=None):
+        pars = merge_pars(get_default_parameters(), pars)
+        self.pars = pars
+        self.log = logging.getLogger(self.__class__.__name__)
+        self.slm = slm
+
+        if pars['control']['SingleZernike']['pupil'] == 1:
+            self.slm1 = slm.slm1
+        else:
+            self.slm1 = slm.slm2
+
+        nz = self.slm1.aberration.size
+        if pars['control']['SingleZernike']['pupil'] == 1:
+            indices = np.arange(1, nz + 1)
+        else:
+            indices = get_noll_indices(pars)
+        self.indices = indices
+        ndof = indices.size
+
+        self.ndof = ndof
+        self.h5f = h5f
+        self.z0 = self.slm1.aberration.ravel()
+
+        self.h5_save('indices', self.indices)
+        self.h5_save('flat', self.slm1.flat)
+        self.h5_save('z0', self.z0)
+        self.P = None
+
+        if h5f:
+            self.h5_make_empty('flat_on', (1,), np.bool)
+            self.h5_make_empty('x', (ndof,))
+            self.h5_make_empty('z2', (self.z0.size,))
+
+        self.h5_save('name', self.__class__.__name__)
+        self.h5_save('P', np.eye(nz))
+
+    def h5_make_empty(self, name, shape, dtype=np.float):
+        if self.h5f:
+            name = self.__class__.__name__ + '/' + name
+            if name in self.h5f:
+                del self.h5f[name]
+            self.h5f.create_dataset(
+                name, shape + (0,), maxshape=shape + (None,),
+                dtype=dtype)
+
+    def h5_append(self, name, what):
+        if self.h5f:
+            name = self.__class__.__name__ + '/' + name
+            self.h5f[name].resize((
+                self.h5f[name].shape[0], self.h5f[name].shape[1] + 1))
+            self.h5f[name][:, -1] = what
+
+    def h5_save(self, where, what):
+        if self.h5f:
+            name = self.__class__.__name__ + '/' + where
+            if name in self.h5f:
+                del self.h5f[name]
+            self.h5f[name] = what
+
+    def write(self, x):
+        assert(x.size == self.ndof)
+        z1 = np.zeros(self.slm1.aberration.size)
+        z1[self.indices - 1] = x[:]
+        if self.P is not None:
+            z2 = np.dot(self.P, z1 + self.z0)
+        else:
+            z2 = z1 + self.z0
+        self.slm1.set_aberration(z2.reshape(-1, 1))
+
+        self.h5_append('flat_on', bool(self.slm1.flat_on))
+        self.h5_append('x', x)
+        self.h5_append('z2', z2)
+
+
 class DoubleControl(QDialog):
-    
+
+    can_close = True
     close_slm = True
-    
+    sig_acquire = pyqtSignal(tuple)
+    sig_release = pyqtSignal(tuple)
+
     def __init__(self, double_slm, settings):
         super().__init__(parent=None)
+        self.mutex = QMutex()
         self.setWindowTitle(
             'SLM ' + version.__version__ + ' ' + version.__date__)
         QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
@@ -1389,9 +1558,9 @@ class DoubleControl(QDialog):
             self.setGeometry(
                 settings['window'][0], settings['window'][1],
                 settings['window'][2], settings['window'][3])
-        
+
         self.double_slm = double_slm
-        
+
         self.control1 = Control(self.double_slm.slm1,settings,is_parent=False)
         self.control2 = Control(self.double_slm.slm2,{},is_parent = False)
         
@@ -1406,6 +1575,28 @@ class DoubleControl(QDialog):
         self.top.addWidget(self.parametersGroup,1,0)
         
         self.setLayout(self.top)
+
+        def make_release_hand():
+            def f(t):
+                # self.control.u[:] = t[0].u
+                # self.zpanel.z[:] = self.control.u2z()
+                # self.zpanel.update_controls()
+                # self.zpanel.update_gui()
+                self.setEnabled(True)
+                self.can_close = True
+                self.mutex.unlock()
+            return f
+
+        def make_acquire_hand():
+            def f(t):
+                self.mutex.lock()
+                self.can_close = False
+                self.setEnabled(False)
+            return f
+
+        self.sig_release.connect(make_release_hand())
+        self.sig_acquire.connect(make_acquire_hand())
+
         
     @staticmethod
     def helper_boolupdate(mycallback, myupdate):
@@ -1413,6 +1604,7 @@ class DoubleControl(QDialog):
             mycallback(i)
             myupdate()
         return f
+
     @staticmethod
     def helper1(name, labels, mins, handlers, curvals, Validator):
         group = QGroupBox(name)
@@ -1565,13 +1757,25 @@ class DoubleControl(QDialog):
         self.make_geometry_tab(self.double_slm)
         self.top.addWidget(self.pupilsTab,0,1,2,1)
         self.top.addWidget(self.parametersGroup,1,0)
-        
+
     def closeEvent(self, event):
-        if self.close_slm:
-            self.double_slm.slm2.close()
-            self.double_slm.close()
-        super().close()
-        
+        if self.can_close:
+            if self.close_slm:
+                self.double_slm.slm2.close()
+                self.double_slm.close()
+            super().close()
+            event.accept()
+        else:
+            event.ignore()
+
+    def acquire_control(self, h5f):
+        self.sig_acquire.emit((h5f,))
+        return SingleZernikeControl(self.double_slm, h5f=h5f)
+
+    def release_control(self, control, h5f):
+        self.sig_release.emit((control, h5f))
+
+
 class Console(QDialog):
 
     def __init__(self, slm, control):
@@ -1613,6 +1817,39 @@ class Console(QDialog):
             'widget': widget,
             'kernel': kernel,
             'parent': self})
+
+
+def add_arguments(parser):
+    parser.add_argument('--slm-dump', action='store_true')
+    parser.add_argument('--slm-double', action='store_true')
+    parser.add_argument('--slm-single', action='store_false', dest='double')
+    parser.set_defaults(slm_double=True)
+    parser.add_argument(
+        '--slm-settings', type=argparse.FileType('r'), default=None,
+        metavar='JSON', help='Load a previous configuration file')
+
+
+def new_slm_window(app, args):
+    if args.double:
+        slm = DoubleSLM()
+    else:
+        slm = SLM()
+    slm.show()
+    slm.refresh_hologram()
+
+    if args.slm_settings:
+        d = slm.load(args.slm_settings)['control']
+        args.slm_settings.close()
+        args.slm_settings = args.slm_settings.name
+    else:
+        d = {}
+    if args.double:
+        control = DoubleControl(slm, d)
+    else:
+        control = Control(slm, d)
+    control.show()
+
+    return control
 
 
 if __name__ == '__main__':
