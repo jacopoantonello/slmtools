@@ -22,6 +22,10 @@ from PyQt5.QtWidgets import (
     QMessageBox, QTabWidget,
     )
 
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
+from matplotlib.figure import Figure
+
 from qtconsole.rich_jupyter_widget import RichJupyterWidget
 from qtconsole.inprocess import QtInProcessKernelManager
 
@@ -33,119 +37,53 @@ from slm.ext.czernike import RZern
 """
 
 
-class SLM(QDialog):
-    refreshHologramSignal = pyqtSignal()
-    def __init__(self, d={}):
-        super().__init__(
-            parent=None,
-            flags=Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-        
-        self.flat_file = None
-        self.flat = None
-        self.flat_on = 0.0
-        self.hologram_geometry = [0, 0, 400, 200]
+class Pupil():
+
+    def __init__(self, holo):
+        self.log = logging.getLogger(self.__class__.__name__)
+        self.holo = holo
+
         self.rzern = None
-        self.arr = None
-        self.qim = None
         self.pupil_xy = [0.0, 0.0]
         self.pupil_rho = 50.0
         self.angle_xy = [0.0, 0.0]
         self.aberration = np.zeros((15, 1))
-        self.wrap_value = 0xff
         self.mask2d_on = 0.0
         self.mask2d_sign = 1.0
         self.mask3d_on = 0.0
         self.mask3d_radius = 0.6
         self.mask3d_height = 1.0
-        self.all_phase=0
 
     def parameters2dict(self):
-        """Stores all relevant parameters in a dictionary. Useful for saving"""
-        d = {
-            'hologram_geometry': self.hologram_geometry,
+        return {
             'pupil_xy': self.pupil_xy,
             'pupil_rho': self.pupil_rho,
+            'angle_xy': self.angle_xy,
             'aberration': self.aberration.tolist(),
-            'wrap_value': self.wrap_value,
             'mask2d_on': self.mask2d_on,
             'mask2d_sign': self.mask2d_sign,
             'mask3d_on': self.mask3d_on,
             'mask3d_radius': self.mask3d_radius,
             'mask3d_height': self.mask3d_height,
-            'flat_file': self.flat_file,
-            'flat_on': self.flat_on,
-            'angle_xy': self.angle_xy
-            }
-        return d
-    
-    def dict2parameters(self,d):
-        """Sets each SLM parameter value according to the ones stored in dictionary
-        d"""
-        self.hologram_geometry = d['hologram_geometry']
-        pupil_xy = d['pupil_xy']
-        if pupil_xy[0] != self.pupil_xy[0] or pupil_xy[1] != self.pupil_xy[1]:
-            # Necessary to make sure that the new pupil is calculated at the
-            # right position
-            self.rzern = None
-            self.pupil_xy = pupil_xy
+        }
+
+    def dict2parameters(self, d):
         self.pupil_rho = d['pupil_rho']
         self.aberration = np.array(d['aberration']).reshape((-1, 1))
-        self.wrap_value = d['wrap_value']
         self.mask2d_on = d['mask2d_on']
         self.mask2d_sign = d['mask2d_sign']
         self.mask3d_on = d['mask3d_on']
         self.mask3d_radius = d['mask3d_radius']
         self.mask3d_height = d['mask3d_height']
         self.angle_xy = d['angle_xy']
-        #Problem there
-        if "flat_file" in d:
-            self.set_flat(d['flat_file'])
-            self.flat_on = d['flat_on']
-        else:
-            self.flat_on = False
-    def load(self, f):
-        d = json.load(f)
-        self.dict2parameters(d)
-        self.refresh_hologram()
-        return d
-    
-    def save(self, f, merge=None):
-        d = self.parameters2dict()
-        if merge:
-            merge.update(d)
-        else:
-            merge = d
-        json.dump(merge, f)
 
-    def refresh_hologram(self, refresh_slm2 = True):
-        # flat file overwrites hologram dimensions
-        if self.flat_file is None:
-            # [0, 1]
-            self.flat = 0.0
-        else:
-            self.copy_flat_shape()
-        self.setGeometry(*self.hologram_geometry)
-        self.setFixedSize(
-            self.hologram_geometry[2], self.hologram_geometry[3])
-
+    def refresh_pupil(self, hologram_geometry):
+        dirty = False
         if (
-                self.arr is None or
-                self.qim is None or
-                self.arr.shape[0] != self.hologram_geometry[3] or
-                self.arr.shape[1] != self.hologram_geometry[2]):
+                self.xv.shape[0] != self.hologram_geometry[3] or
+                self.xv.shape[1] != self.hologram_geometry[2]):
 
-            print('refresh_hologram(): ALLOCATING arr & qim')
-            self.arr = np.ndarray(
-                shape=(self.hologram_geometry[3], self.hologram_geometry[2]),
-                dtype=np.uint32)
-            self.qim = QImage(
-                self.arr.data, self.arr.shape[1], self.arr.shape[0],
-                QImage.Format_RGB32)
-
-            self.rzern = None
-
-        if self.rzern is None or self.aberration.size != self.rzern.nk:
-            print('refresh_hologram(): ALLOCATING Zernike')
+            self.log.info('allocating Zernike')
 
             def make_dd(rho, n, x):
                 scale = (n/2)/rho
@@ -153,8 +91,6 @@ class SLM(QDialog):
                 dd -= np.diff(dd)[0]*x
                 return dd
 
-            nnew = int((-3 + sqrt(9 - 4*2*(1 - self.aberration.size)))/2)
-            self.rzern = RZern(nnew)
             dd1 = make_dd(
                 self.pupil_rho,
                 self.hologram_geometry[2],
@@ -165,61 +101,44 @@ class SLM(QDialog):
                 self.pupil_xy[1])
             self.xv, self.yv = np.meshgrid(dd1, dd2)
             self.rzern.make_cart_grid(self.xv, self.yv)
+            dirty = True
 
+        if (
+                dirty or
+                self.rzern is None or
+                self.aberration.size != self.rzern.nk):
+            nnew = int((-3 + sqrt(9 - 4*2*(1 - self.aberration.size)))/2)
+            self.rzern = RZern(nnew)
             self.theta = np.arctan2(self.yv, self.xv)
             self.rho = np.sqrt(self.xv**2 + self.yv**2)
-
 
         self.make_phi2d()
         assert(np.all(np.isfinite(self.phi2d)))
         self.make_phi3d()
         assert(np.all(np.isfinite(self.phi3d)))
         self.make_phi()
-        assert(np.all(np.isfinite(self.phi)))        
+        assert(np.all(np.isfinite(self.phi)))
         self.make_grating()
         assert(np.all(np.isfinite(self.grating)))
 
         def printout(t, x):
             if isinstance(x, np.ndarray):
-                print('{} [{:g}, {:g}] {:g}'.format(
-                    t, x.min(), x.max(), x.mean()))
+                self.log.info(
+                    f'{t} [{x.min():g}, {x.max():g}] {x.mean():g}')
             else:
-                print(t + ' [0.0, 0.0] 0.0')
+                self.log.info(str(t) + ' [0.0, 0.0] 0.0')
 
-        print('refresh_hologram(): repaint')
-
-        printout('flat', self.flat)
         printout('phi', self.phi)
         printout('phi2d', self.phi2d)
         printout('phi3d', self.phi3d)
 
-        # [0, 1] waves
-        background = self.flat_on*self.flat
-        # [-pi, pi] principal branch rads (zero mean)
         phase = (
             self.phi +
             self.mask2d_on*self.phi2d +
             self.mask3d_on*self.phi3d +
             self.grating)
-        #!!! not clean
-        self.all_phase = phase.copy()
-        
-        phase /= (2*np.pi)  # phase in waves
-        # all in waves
-        gray = background + phase
-        printout('gray', gray)
-        gray -= np.floor(gray.min())
-        assert(gray.min() >= -1e-9)
-        gray *= self.wrap_value
-        printout('gray', gray)
-        gray %= self.wrap_value
-        printout('gray', gray)
-        assert(gray.min() >= 0)
-        assert(gray.max() <= 255)
-        gray = gray.astype(np.uint8)
-        self.arr[:] = gray.astype(np.uint32)*0x010101
 
-        self.refreshHologramSignal.emit()
+        return phase
 
     def make_phi2d(self):
         # [-pi, pi] principal branch
@@ -246,9 +165,7 @@ class SLM(QDialog):
         tt = self.angle_xy[0]*(
             masks[0, :, :] - self.pupil_xy[0] - n/2) + self.angle_xy[1]*(
             masks[1, :, :] - self.pupil_xy[1] - m/2)
-        print()
-        print("make grating",self.angle_xy)
-        print()
+        self.log.info(f'"make grating {str(self.angle_xy)}')
         tt = tt/value_max*2*np.pi
         tt[self.rho >= 1.0] = 0
         self.grating = np.flipud(tt)
@@ -260,36 +177,6 @@ class SLM(QDialog):
             phi.reshape(self.arr.shape, order='F'))
         phi[self.rho >= 1.0] = 0
         self.phi = np.flipud(phi)
-
-    def copy_flat_shape(self):
-        self.hologram_geometry[2] = self.flat.shape[1]
-        self.hologram_geometry[3] = self.flat.shape[0]
-
-    def set_flat(self, fname,refresh_hologram = True):
-        if fname is None or fname == '':
-            self.flat_file = None
-            self.flat = 0.0
-        else:
-            try:
-                self.flat_file = fname
-                self.flat = np.ascontiguousarray(
-                    imread(fname), dtype=np.float)/255
-                print(self.flat.shape)
-                self.copy_flat_shape()
-            except Exception:
-                self.flat_file = None
-                self.flat = 0.0
-        if refresh_hologram:
-            self.refresh_hologram()
-
-    def set_hologram_geometry(self, geometry,refresh=True):
-        if isinstance(self.flat, np.ndarray) and len(self.flat.shape) == 2:
-            self.hologram_geometry[:2] = geometry[:2]
-            self.copy_flat_shape()
-        elif geometry is not None:
-            self.hologram_geometry[:] = geometry[:]
-        if refresh:
-            self.refresh_hologram()
 
     def set_pupil_xy(self, xy):
         if xy is None:
@@ -303,62 +190,209 @@ class SLM(QDialog):
             if self.pupil_xy[1] != xy[1]:
                 self.pupil_xy[1] = xy[1]
                 self.rzern = None
-
         self.rzern = None
-        self.refresh_hologram()
+        self.holo.refresh_hologram()
 
     def set_pupil_rho(self, rho):
         if rho is None:
             self.pupil_rho = min(self.hologram_geometry[2:])/2*.9
         else:
             self.pupil_rho = rho
-
         self.rzern = None
-        self.refresh_hologram()
+        self.holo.refresh_hologram()
+
     def set_mask2d_sign(self, s):
         self.mask2d_sign = s
-        self.refresh_hologram()
+        self.holo.refresh_hologram()
 
     def set_mask3d_height(self, s):
         self.mask3d_height = s
-        self.refresh_hologram()
+        self.holo.refresh_hologram()
 
-    def set_wrap_value(self, wrap_value):
-        if wrap_value is None:
-            self.wrap_value = 255
-        else:
-            self.wrap_value = wrap_value
+    def set_anglexy(self, val, ind):
+        self.angle_xy[ind] = val
+        self.holo.refresh_hologram()
 
-        self.refresh_hologram()
-    def set_anglexy(self,val,ind):
-        self.angle_xy[ind] =  val
-        self.refresh_hologram()
-        
     def set_aberration(self, aberration):
         if aberration is None:
             self.aberration = np.zeros((self.rzern.nk, 1))
         else:
             self.aberration = np.array(aberration).reshape((-1, 1))
-
-        self.refresh_hologram()
+        self.holo.refresh_hologram()
 
     def set_mask2d_on(self, on):
         self.mask2d_on = on
-        self.refresh_hologram()
+        self.holo.refresh_hologram()
 
     def set_mask3d_on(self, on):
         self.mask3d_on = on
-        self.refresh_hologram()
-
-    def set_flat_on(self, on):
-        self.flat_on = on
-        self.refresh_hologram()
+        self.holo.refresh_hologram()
 
     def set_mask3d_radius(self, rho):
         if rho is None:
             self.mask3d_radius = 0.6*self.pupil_rho
         else:
             self.mask3d_radius = rho
+        self.holo.refresh_hologram()
+
+
+class SLM(QDialog):
+
+    refreshHologramSignal = pyqtSignal()
+
+    def __init__(self, d={}):
+        super().__init__(
+            parent=None,
+            flags=Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+
+        self.log = logging.getLogger(self.__class__.__name__)
+        self.flat_file = None
+        self.flat = None
+        self.flat_on = 0.0
+        self.hologram_geometry = [0, 0, 400, 200]
+
+        self.pupils = [Pupil()]
+
+        self.arr = None
+        self.qim = None
+        self.wrap_value = 0xff
+
+    def parameters2dict(self):
+        """Stores all relevant parameters in a dictionary. Useful for saving"""
+        d = {
+            'hologram_geometry': self.hologram_geometry,
+            'wrap_value': self.wrap_value,
+            'flat_file': self.flat_file,
+            'flat_on': self.flat_on,
+            'pupils': [p.parameters2dict() for p in self.pupils],
+            }
+        return d
+
+    def dict2parameters(self, d):
+        """Sets each SLM parameter value according to the ones stored in dictionary
+        d"""
+        self.hologram_geometry = d['hologram_geometry']
+        self.wrap_value = d['wrap_value']
+        if "flat_file" in d:
+            self.set_flat(d['flat_file'])
+            self.flat_on = d['flat_on']
+        else:
+            self.flat_on = False
+
+        self.pupils.clear()
+        for pd in d['pupils']:
+            p = Pupil()
+            p.dict2parameters(pd)
+
+    def load(self, f):
+        d = json.load(f)
+        self.dict2parameters(d)
+        self.refresh_hologram()
+        return d
+
+    def save(self, f, merge=None):
+        d = self.parameters2dict()
+        if merge:
+            merge.update(d)
+        else:
+            merge = d
+        json.dump(merge, f)
+
+    def refresh_hologram(self):
+        # flat file overwrites hologram dimensions
+        if self.flat_file is None:
+            # [0, 1]
+            self.flat = 0.0
+        else:
+            self.copy_flat_shape()
+        self.setGeometry(*self.hologram_geometry)
+        self.setFixedSize(
+            self.hologram_geometry[2], self.hologram_geometry[3])
+
+        if (
+                self.arr is None or
+                self.qim is None or
+                self.arr.shape[0] != self.hologram_geometry[3] or
+                self.arr.shape[1] != self.hologram_geometry[2]):
+            self.log.info('refresh_hologram(): ALLOCATING arr & qim')
+            self.arr = np.zeros(
+                shape=(self.hologram_geometry[3], self.hologram_geometry[2]),
+                dtype=np.uint32)
+            self.qim = QImage(
+                self.arr.data, self.arr.shape[1], self.arr.shape[0],
+                QImage.Format_RGB32)
+
+        self.info.log('refresh_hologram(): repaint')
+
+        phase = 0
+        for p in self.pupils:
+            phase += p.refresh_pupil(self.hologram_geometry)
+
+        def printout(t, x):
+            if isinstance(x, np.ndarray):
+                self.log.info(
+                    f'{t} [{x.min():g}, {x.max():g}] {x.mean():g}')
+            else:
+                self.log.info(str(t) + ' [0.0, 0.0] 0.0')
+
+        # [0, 1] waves
+        background = self.flat_on*self.flat
+        # [-pi, pi] principal branch rads (zero mean)
+        phase /= (2*np.pi)  # phase in waves
+        # all in waves
+        gray = background + phase
+        printout('gray', gray)
+        gray -= np.floor(gray.min())
+        assert(gray.min() >= -1e-9)
+        gray *= self.wrap_value
+        printout('gray', gray)
+        gray %= self.wrap_value
+        printout('gray', gray)
+        assert(gray.min() >= 0)
+        assert(gray.max() <= 255)
+        gray = gray.astype(np.uint8)
+        self.arr[:] = gray.astype(np.uint32)*0x010101
+
+        self.refreshHologramSignal.emit()
+
+    def copy_flat_shape(self):
+        self.hologram_geometry[2] = self.flat.shape[1]
+        self.hologram_geometry[3] = self.flat.shape[0]
+
+    def set_flat(self, fname, refresh_hologram=True):
+        if fname is None or fname == '':
+            self.flat_file = None
+            self.flat = 0.0
+        else:
+            try:
+                self.flat_file = fname
+                self.flat = np.ascontiguousarray(
+                    imread(fname), dtype=np.float)/255
+                self.copy_flat_shape()
+            except Exception:
+                self.flat_file = None
+                self.flat = 0.0
+        if refresh_hologram:
+            self.refresh_hologram()
+
+    def set_hologram_geometry(self, geometry, refresh=True):
+        if isinstance(self.flat, np.ndarray) and len(self.flat.shape) == 2:
+            self.hologram_geometry[:2] = geometry[:2]
+            self.copy_flat_shape()
+        elif geometry is not None:
+            self.hologram_geometry[:] = geometry[:]
+        if refresh:
+            self.refresh_hologram()
+
+    def set_wrap_value(self, wrap_value):
+        if wrap_value is None:
+            self.wrap_value = 255
+        else:
+            self.wrap_value = wrap_value
+        self.refresh_hologram()
+
+    def set_flat_on(self, on):
+        self.flat_on = on
         self.refresh_hologram()
 
     def keyPressEvent(self, event):
@@ -573,10 +607,10 @@ class DoubleSLM(SLM):
             qp.begin(self)
             qp.drawImage(0, 0, self.qim)
             qp.end()
-            
+
+
 class PhaseDisplay(QWidget):
     # TODO pthread me or the SLM class itself
-
     dirty = False
     size = [0, 0]
     phase = None
@@ -639,9 +673,6 @@ class PhaseDisplay(QWidget):
             qp.drawImage(0, 0, self.qim)
             qp.end()
 
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-from matplotlib.figure import Figure
 
 class MatplotlibWindow(QDialog):
 
@@ -656,12 +687,12 @@ class MatplotlibWindow(QDialog):
         self.ax = self.figure.add_subplot(111)
         # this is the Canvas Widget that displays the `figure`
         # it takes the `figure` instance as a parameter to __init__
-        self.canvas = FigureCanvas(self.figure)
+        self.canvas = FigureCanvasQTAgg(self.figure)
 
         # this is the Navigation widget
         # it takes the Canvas widget and a parent
         if toolbar:
-            self.toolbar = NavigationToolbar(self.canvas, self)
+            self.toolbar = NavigationToolbar2QT(self.canvas, self)
 
         # set the layout
         layout = QVBoxLayout()
@@ -676,6 +707,7 @@ class MatplotlibWindow(QDialog):
         self.ax.imshow(arr,cmap="gray")
         self.ax.axis("off")
         self.canvas.draw()
+
 
 class Control(QDialog):
     # TODO refactor and cleanup awful Qt code
@@ -1367,6 +1399,7 @@ class Control(QDialog):
             self.top.addWidget(self.group_aberration, 4, 0, 2, 2)
         
         print("end reinitialize")
+
     def closeEvent(self, event):
         if self.close_slm:
             self.slm.close()
@@ -1774,6 +1807,9 @@ class DoubleControl(QDialog):
 
     def release_control(self, control, h5f):
         self.sig_release.emit((control, h5f))
+        self.control1.reinitialize(self.double_slm.slm1)
+        self.control2.reinitialize(self.double_slm.slm2)
+        self.reinitialise_parameters_group()
 
 
 class Console(QDialog):
