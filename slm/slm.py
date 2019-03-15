@@ -248,7 +248,7 @@ class Pupil():
 class SLM(QDialog):
 
     pupils = []
-    refreshHologramSignal = pyqtSignal()
+    refreshHologramSignal = pyqtSignal(np.ndarray)
 
     def __init__(self, settings={}):
         super().__init__(
@@ -259,6 +259,7 @@ class SLM(QDialog):
         self.flat_file = None
         self.flat = None
         self.flat_on = 0.0
+        self.double_flat_on = False
         self.hologram_geometry = [0, 0, 400, 200]
 
         self.arr = None
@@ -275,6 +276,7 @@ class SLM(QDialog):
             'wrap_value': self.wrap_value,
             'flat_file': self.flat_file,
             'flat_on': self.flat_on,
+            'double_flat_on': self.double_flat_on,
             'pupils': [p.parameters2dict() for p in self.pupils],
             }
         return d
@@ -289,6 +291,7 @@ class SLM(QDialog):
             self.flat_on = d['flat_on']
         else:
             self.flat_on = False
+        self.double_flat_on = d['double_flat_on']
 
         self.pupils.clear()
         for ps in d['pupils']:
@@ -312,7 +315,9 @@ class SLM(QDialog):
         # flat file overwrites hologram dimensions
         if self.flat_file is None:
             # [0, 1]
-            self.flat = 0.0
+            self.flat = np.zeros((
+                self.hologram_geometry[3],
+                self.hologram_geometry[2]))
         else:
             self.copy_flat_shape()
         self.setGeometry(*self.hologram_geometry)
@@ -332,7 +337,7 @@ class SLM(QDialog):
                 self.arr.data, self.arr.shape[1], self.arr.shape[0],
                 QImage.Format_RGB32)
 
-        self.info.log('refresh_hologram(): repaint')
+        self.log.info('refresh_hologram(): repaint')
 
         phase = 0
         for p in self.pupils:
@@ -363,7 +368,7 @@ class SLM(QDialog):
         gray = gray.astype(np.uint8)
         self.arr[:] = gray.astype(np.uint32)*0x010101
 
-        self.refreshHologramSignal.emit()
+        self.refreshHologramSignal.emit(gray)
 
     def copy_flat_shape(self):
         self.hologram_geometry[2] = self.flat.shape[1]
@@ -404,6 +409,11 @@ class SLM(QDialog):
     def set_flat_on(self, on):
         self.flat_on = on
         self.refresh_hologram()
+
+    def set_double_flat_on(self, on, refresh=True):
+        self.double_flat_on = on
+        if refresh:
+            self.refresh_hologram()
 
     def keyPressEvent(self, event):
         key = event.key()
@@ -1154,14 +1164,15 @@ class SingleZernikeControl:
 
 
 class ControlWindow(QDialog):
+
     can_close = True
     close_slm = True
     sig_acquire = pyqtSignal(tuple)
     sig_release = pyqtSignal(tuple)
 
-    def __init__(self, settings):
+    def __init__(self, slm, settings={}):
         super().__init__(parent=None)
-        self.slm = SLM(settings['slm'])
+        self.slm = slm
         self.settings = settings
         self.mutex = QMutex()
 
@@ -1236,9 +1247,9 @@ class ControlWindow(QDialog):
 
     def make_general_display(self):
         self.display = MatplotlibWindow(figsize=(8, 6))
-        self.slm.newHologramSignal.connect(self.display.update_array)
-    
-    def make_file_tab(self, slm):
+        self.slm.refreshHologramSignal.connect(self.display.update_array)
+
+    def make_file_tab(self):
         """Rewriting the file tab to facilitate loading of 2-pupil files"""
         g = QGroupBox('File')
         load = QPushButton('load')
@@ -1294,8 +1305,8 @@ class ControlWindow(QDialog):
                 fdiag, _ = QFileDialog.getOpenFileName()
                 if fdiag:
                     slm.set_flat(fdiag)
-                    self.control1.reinitialize(self.double_slm.slm1) 
-                    self.control2.reinitialize(self.double_slm.slm2) 
+                    self.control1.reinitialize(self.slm.slm1) 
+                    self.control2.reinitialize(self.slm.slm2) 
                     self.reinitialise_parameters_group()
             return myf1
 
@@ -1303,72 +1314,84 @@ class ControlWindow(QDialog):
         l1 = QGridLayout()
         cboxlf = QCheckBox('flat on')
         cboxlf.toggled.connect(self.helper_boolupdate(
-            self.double_slm.set_flat_on, self.double_slm.update))
-        cboxlf.setChecked(self.double_slm.flat_on)
+            self.slm.set_flat_on, self.slm.update))
+        cboxlf.setChecked(self.slm.flat_on)
         l1.addWidget(cboxlf, 0, 0)
         loadbut = QPushButton('load')
         loadbut.clicked.connect(helper_load_flat1())
         l1.addWidget(loadbut, 0, 1)
         g.setLayout(l1)
         self.group_flat = g
-        
-    def make_geometry_tab(self, double_slm):
-            def handle_geometry(ind, le):
-                def f():
-                    try:
-                        slm
-                        ival = int(le.text())
-                    except Exception:
-                        le.setText(str(double_slm.hologram_geometry[ind]))
-                        return
-                    double_slm.slm1.hologram_geometry[ind] = ival
-                    double_slm.slm2.hologram_geometry[ind] = ival
-                    double_slm.hologram_geometry[ind] = ival
-                    
-                    double_slm.set_hologram_geometry(double_slm.hologram_geometry)
-                    le.setText(str(double_slm.hologram_geometry[ind]))
-                return f
-    
-            self.group_geometry = self.helper1(
-                'Geometry',
-                ['x', 'y', 'width', 'height'],
-                [None, None, 100, 100],
-                [handle_geometry]*4,
-                double_slm.hologram_geometry, QIntValidator)
+
+    def make_geometry_tab(self):
+        def handle_geometry(ind, le):
+            def f():
+                try:
+                    ival = int(le.text())
+                except Exception:
+                    le.setText(str(self.slm.hologram_geometry[ind]))
+                    return
+                self.slm.hologram_geometry[ind] = ival
+                self.slm.set_hologram_geometry(self.slm.hologram_geometry)
+                le.setText(str(self.slm.hologram_geometry[ind]))
+            return f
+
+        self.group_geometry = self.helper1(
+            'Geometry',
+            ['x', 'y', 'width', 'height'],
+            [None, None, 100, 100],
+            [handle_geometry]*4,
+            self.slm.hologram_geometry, QIntValidator)
+
+    def make_wrap_tab(self):
+        g = QGroupBox('Wrap value')
+        l1 = QGridLayout()
+        lewrap = QLineEdit(str(self.slm.wrap_value))
+        lewrap.setMaximumWidth(50)
+        lewrap.setValidator(QIntValidator(1, 255))
+
+        def handle_wrap(lewrap1):
+            def f():
+                try:
+                    ival = int(lewrap1.text())
+                except Exception:
+                    lewrap1.setText(str(self.slm.wrap_value))
+                    return
+                self.slm.set_wrap_value(ival)
+                self.slm.update() 
+                lewrap1.setText(str(self.slm.wrap_value))
+            return f
+
+        lewrap.editingFinished.connect(handle_wrap(lewrap))
+        l1.addWidget(lewrap, 0, 0)
+        g.setLayout(l1)
+        self.group_wrap = g
 
     def make_parameters_group(self):
-        self.make_file_tab(self.double_slm)
+        self.make_file_tab()
         self.make_flat_tab()
+        self.make_wrap_tab()
         self.doubleFlatOnCheckBox = QCheckBox("Double flat on")
-        self.doubleFlatOnCheckBox.setChecked(self.double_slm.double_flat_on)
-        self.doubleFlatOnCheckBox.toggled.connect(self.double_slm.set_double_flat_on)
+        self.doubleFlatOnCheckBox.setChecked(self.slm.double_flat_on)
+        self.doubleFlatOnCheckBox.toggled.connect(self.slm.set_double_flat_on)
         
         group = QGroupBox("Parameters")
         top = QGridLayout()
         top.addWidget(self.group_geometry, 0, 0,1,3)     
         
         top.addWidget(self.group_flat, 1, 0)
-        top.addWidget(self.control1.group_wrap, 1, 1)
+        top.addWidget(self.group_wrap, 1, 1)
         top.addWidget(self.doubleFlatOnCheckBox, 1, 2)
         
         top.addWidget(self.group_file, 2, 0,1,3)
         group.setLayout(top)
         self.parametersGroup = group
         
-    def reinitialise_parameters_group(self):
-        """Reinitializes the parameters when loading a correction file"""
-        self.parametersGroup.deleteLater()
-        self.group_geometry.deleteLater()
-        self.make_parameters_group()
-        self.make_geometry_tab(self.double_slm)
-        self.top.addWidget(self.pupilsTab,0,1,2,1)
-        self.top.addWidget(self.parametersGroup,1,0)
-
     def closeEvent(self, event):
         if self.can_close:
             if self.close_slm:
-                self.double_slm.slm2.close()
-                self.double_slm.close()
+                self.slm.slm2.close()
+                self.slm.close()
             super().close()
             event.accept()
         else:
@@ -1376,13 +1399,11 @@ class ControlWindow(QDialog):
 
     def acquire_control(self, h5f):
         self.sig_acquire.emit((h5f,))
-        return SingleZernikeControl(self.double_slm, h5f=h5f)
+        return SingleZernikeControl(self.slm, h5f=h5f)
 
     def release_control(self, control, h5f):
         self.sig_release.emit((control, h5f))
-        self.control1.reinitialize(self.double_slm.slm1)
-        self.control2.reinitialize(self.double_slm.slm2)
-        self.reinitialise_parameters_group()
+        assert(False)
 
 
 class Console(QDialog):
@@ -1478,23 +1499,24 @@ if __name__ == '__main__':
         metavar='JSON',
         help='Load a previous configuration file')
     args = parser.parse_args(args[1:])
-    if args.double:
-        slm = DoubleSLM()
-    else:
-        slm = SLM()
+
+    slm = SLM()
     slm.show()
     slm.refresh_hologram()
 
-    if args.load:
-        d = slm.load(args.load)['control']
-        args.load.close()
-    else:
-        d = {}
-    if args.double:
-        control = DoubleControl(slm, d)
-    else:
-        control = Control(slm, d)
-    control.show()
+    cwin = ControlWindow(slm)
+    cwin.show()
+
+    # if args.load:
+    #     d = slm.load(args.load)['control']
+    #     args.load.close()
+    # else:
+    #     d = {}
+    # if args.double:
+    #     control = DoubleControl(slm, d)
+    # else:
+    #     control = Control(slm, d)
+    # control.show()
 
     if args.console:
         console = Console(slm, control)
