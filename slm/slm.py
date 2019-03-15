@@ -1616,26 +1616,26 @@ class Console(QDialog):
 
 
 if __name__ == '__main__':
-    DOUBLE = True
     app = QApplication(sys.argv)
 
     args = app.arguments()
     parser = argparse.ArgumentParser(
         description='SLM control',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument(
-        '--dump', action='store_true')
-    parser.add_argument(
-        '--console', action='store_true')
+    parser.add_argument('--dump', action='store_true')
+    parser.add_argument('--console', action='store_true')
+    parser.add_argument('--double', action='store_true')
+    parser.add_argument('--single', action='store_false', dest='double')
+    parser.set_defaults(double=True)
     parser.add_argument(
         '--load', type=argparse.FileType('r'), default=None,
         metavar='JSON',
         help='Load a previous configuration file')
     args = parser.parse_args(args[1:])
-    if DOUBLE:
+    if args.double:
         slm = DoubleSLM()
     else:
-        slm=SLM()
+        slm = SLM()
     slm.show()
     slm.refresh_hologram()
 
@@ -1644,10 +1644,10 @@ if __name__ == '__main__':
         args.load.close()
     else:
         d = {}
-    if DOUBLE:
+    if args.double:
         control = DoubleControl(slm, d)
     else:
-        control = Control(slm,d)
+        control = Control(slm, d)
     control.show()
 
     if args.console:
