@@ -9,6 +9,7 @@ import json
 import argparse
 import logging
 
+from time import time
 from datetime import datetime
 from math import sqrt
 from scipy.misc import imread
@@ -217,13 +218,15 @@ class Pupil():
             self.xy[1] = xy[1]
             self.xv = None
 
-        self.holo.refresh_hologram()
+        if self.xv is None:
+            self.holo.refresh_hologram()
 
     def set_rho(self, rho):
         if self.rho != rho:
             self.xv = None
             self.rho = rho
-        self.holo.refresh_hologram()
+        if self.xv is None:
+            self.holo.refresh_hologram()
 
     def set_mask2d_sign(self, s):
         self.mask2d_sign = s
@@ -390,6 +393,7 @@ class SLM(QDialog):
         self.gray = gray
         self.arr[:] = gray.astype(np.uint32)*0x010101
 
+        self.log.info(f'{str(time())}')
         self.refreshHologramSignal.emit()
 
     def copy_flat_shape(self):
@@ -551,7 +555,7 @@ class MatplotlibWindow(QFrame):
     def update_array(self):
         if self.slm.gray is None:
             return
-        if self.im is None or self.slm.gray != self.shape:
+        if self.im is None or self.slm.gray.shape != self.shape:
             self.im = self.ax.imshow(self.slm.gray, cmap="gray")
             self.ax.axis("off")
             self.shape = self.slm.gray.shape
@@ -816,6 +820,7 @@ class PupilPanel(QFrame):
 
         def update_amp(spinbox, slider, le, i):
             def f():
+
                 amp = float(le.text())
                 spinbox.setRange(-amp, amp)
                 spinbox.setValue(spinbox.value())
@@ -932,8 +937,9 @@ class PupilPanel(QFrame):
             self.pupil.set_aberration(newab)
 
             update_zernike_rows()
-            phase_display.update_phase(self.pupil.rzern.n, self.pupil.aberration)
-            phase_display.update()
+            self.phase_display.update_phase(
+                self.pupil.rzern.n, self.pupil.aberration)
+            self.phase_display.update()
             lezm.setText(str(self.pupil.rzern.n))
 
         self.phase_display.update_phase(self.pupil.rzern.n, self.pupil.aberration)
