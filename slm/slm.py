@@ -193,7 +193,7 @@ class Pupil():
         tt = self.angle_xy[0]*(
             masks[0, :, :] - self.xy[0] - n/2) + self.angle_xy[1]*(
             masks[1, :, :] - self.xy[1] - m/2)
-        self.log.info(f'"make grating {str(self.angle_xy)}')
+        self.log.info(f'make grating {str(self.angle_xy)}')
         tt = tt/value_max*2*np.pi
         tt[self.rr >= 1.0] = 0
         self.grating = np.flipud(tt)
@@ -209,26 +209,20 @@ class Pupil():
         self.phi = np.flipud(phi)
 
     def set_xy(self, xy):
-        if xy is None:
-            self.xy = [0.0, 0.0]
-            self.rzern = None
-        else:
-            if self.xy[0] != xy[0]:
-                self.xy[0] = xy[0]
-                self.rzern = None
+        if self.xy[0] != xy[0]:
+            self.xy[0] = xy[0]
+            self.xv = None
 
-            if self.xy[1] != xy[1]:
-                self.xy[1] = xy[1]
-                self.rzern = None
-        self.rzern = None
+        if self.xy[1] != xy[1]:
+            self.xy[1] = xy[1]
+            self.xv = None
+
         self.holo.refresh_hologram()
 
     def set_rho(self, rho):
-        if rho is None:
-            self.rho = min(self.holo.hologram_geometry[2:])/2*.9
-        else:
+        if self.rho != rho:
+            self.xv = None
             self.rho = rho
-        self.rzern = None
         self.holo.refresh_hologram()
 
     def set_mask2d_sign(self, s):
@@ -558,8 +552,7 @@ class MatplotlibWindow(QFrame):
         if self.slm.gray is None:
             return
         if self.im is None or self.slm.gray != self.shape:
-            self.im = self.ax.imshow(
-                self.slm.gray, cmap="gray", vmin=0, vmax=0xff)
+            self.im = self.ax.imshow(self.slm.gray, cmap="gray")
             self.ax.axis("off")
             self.shape = self.slm.gray.shape
         self.im.set_data(self.slm.gray)
@@ -567,8 +560,6 @@ class MatplotlibWindow(QFrame):
 
 
 class PupilPanel(QFrame):
-
-    sig_pupil = pyqtSignal()
 
     def __init__(self, pupil, parent=None):
         """Subclass for a control GUI.
@@ -621,7 +612,6 @@ class PupilPanel(QFrame):
     def helper_boolupdate(self, mycallback):
         def f(i):
             mycallback(i)
-            self.sig_pupil.emit()
         return f
 
     def make_pupil_tab(self):
@@ -632,10 +622,10 @@ class PupilPanel(QFrame):
                 except Exception:
                     le.setText(str(self.pupil.xy[ind]))
                     return
-                self.pupil.xy[ind] = fval
-                self.pupil.set_xy(self.pupil.xy)
+                xy = [self.pupil.xy[0], self.pupil.xy[1]]
+                xy[ind] = fval
+                self.pupil.set_xy(xy)
                 le.setText(str(self.pupil.xy[ind]))
-                self.sig_pupil.emit()
             return f
 
         def handle_rho(ind, le):
@@ -647,7 +637,6 @@ class PupilPanel(QFrame):
                     return
                 self.pupil.set_rho(fval)
                 le.setText(str(self.pupil.rho))
-                self.sig_pupil.emit()
             return f
 
         self.group_pupil = self.helper1(
@@ -680,7 +669,6 @@ class PupilPanel(QFrame):
                     fun(float(1))
                 else:
                     fun(float(-1))
-                self.sig_pupil.emit()
             return f
 
         sign2d.activated.connect(toggle_float(self.pupil.set_mask2d_sign))
@@ -696,7 +684,6 @@ class PupilPanel(QFrame):
             def f(r):
                 slider.setValue(int(r*100))
                 what(r)
-                self.sig_pupil.emit()
             return f
 
         def update_spinbox(s):
@@ -821,7 +808,6 @@ class PupilPanel(QFrame):
                 slider.blockSignals(False)
                 self.pupil.aberration[ind, 0] = r
                 self.pupil.set_aberration(self.pupil.aberration)
-                self.sig_pupil.emit()
 
                 self.phase_display.update_phase(
                     self.pupil.rzern.n, self.pupil.aberration)
@@ -944,7 +930,6 @@ class PupilPanel(QFrame):
             minn = min((n, self.pupil.rzern.n))
             newab[:minn, 0] = self.pupil.aberration[:minn, 0]
             self.pupil.set_aberration(newab)
-            self.sig_pupil.emit()
 
             update_zernike_rows()
             phase_display.update_phase(self.pupil.rzern.n, self.pupil.aberration)
@@ -1015,7 +1000,6 @@ class PupilPanel(QFrame):
                 slider.setValue(fto100(r, amp))
                 slider.blockSignals(False)
                 self.pupil.set_anglexy(r, axis)
-                self.sig_pupil.emit()
             return f
 
         def update_spinbox(s, amp):
@@ -1334,16 +1318,13 @@ class ControlWindow(QDialog):
         save.clicked.connect(helper_save())
 
         self.group_file = g
-        
+
     def make_flat_tab(self):
         def helper_load_flat1():
             def myf1():
                 fdiag, _ = QFileDialog.getOpenFileName()
                 if fdiag:
                     slm.set_flat(fdiag)
-                    self.control1.reinitialize(self.slm.slm1) 
-                    self.control2.reinitialize(self.slm.slm2) 
-                    self.reinitialise_parameters_group()
             return myf1
 
         g = QGroupBox('Flattening')
