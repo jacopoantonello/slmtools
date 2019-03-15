@@ -39,6 +39,9 @@ from slm.ext.czernike import RZern
 
 class Pupil():
 
+    xv = None
+    yv = None
+
     def __init__(self, holo, settings=None):
         self.log = logging.getLogger(self.__class__.__name__)
         self.holo = holo
@@ -54,7 +57,7 @@ class Pupil():
         self.mask3d_on = 0.0
         self.mask3d_radius = 0.6
         self.mask3d_height = 1.0
-        self.zernike_labels = []
+        self.zernike_labels = dict()
 
         if settings:
             self.dict2parameters(settings)
@@ -86,11 +89,13 @@ class Pupil():
         self.mask3d_height = d['mask3d_height']
         self.angle_xy = d['angle_xy']
 
-    def refresh_pupil(self, hologram_geometry):
+    def refresh_pupil(self):
         dirty = False
         if (
-                self.xv.shape[0] != self.hologram_geometry[3] or
-                self.xv.shape[1] != self.hologram_geometry[2]):
+                self.xv is None or
+                self.yv is None or
+                self.xv.shape[0] != self.holo.hologram_geometry[3] or
+                self.xv.shape[1] != self.holo.hologram_geometry[2]):
 
             self.log.info('allocating Zernike')
 
@@ -101,15 +106,12 @@ class Pupil():
                 return dd
 
             dd1 = make_dd(
-                self.pupil_rho,
-                self.hologram_geometry[2],
+                self.pupil_rho, self.holo.hologram_geometry[2],
                 self.pupil_xy[0])
             dd2 = make_dd(
                 self.pupil_rho,
-                self.hologram_geometry[3],
-                self.pupil_xy[1])
+                self.holo.hologram_geometry[3], self.pupil_xy[1])
             self.xv, self.yv = np.meshgrid(dd1, dd2)
-            self.rzern.make_cart_grid(self.xv, self.yv)
             dirty = True
 
         if (
@@ -118,6 +120,7 @@ class Pupil():
                 self.aberration.size != self.rzern.nk):
             nnew = int((-3 + sqrt(9 - 4*2*(1 - self.aberration.size)))/2)
             self.rzern = RZern(nnew)
+            self.rzern.make_cart_grid(self.xv, self.yv)
             self.theta = np.arctan2(self.yv, self.xv)
             self.rho = np.sqrt(self.xv**2 + self.yv**2)
 
@@ -166,8 +169,8 @@ class Pupil():
         self.phi3d = np.flipud(phi3d)
 
     def make_grating(self):
-        m = self.hologram_geometry[3]
-        n = self.hologram_geometry[2]
+        m = self.holo.hologram_geometry[3]
+        n = self.holo.hologram_geometry[2]
         value_max = 15
 
         masks = np.indices((m, n), dtype="float")
@@ -183,7 +186,9 @@ class Pupil():
         # [-pi, pi] principal branch
         phi = np.pi + self.rzern.eval_grid(self.aberration)
         phi = np.ascontiguousarray(
-            phi.reshape(self.arr.shape, order='F'))
+            phi.reshape((
+                self.holo.hologram_geometry[3],
+                self.holo.hologram_geometry[2]), order='F'))
         phi[self.rho >= 1.0] = 0
         self.phi = np.flipud(phi)
 
@@ -204,7 +209,7 @@ class Pupil():
 
     def set_pupil_rho(self, rho):
         if rho is None:
-            self.pupil_rho = min(self.hologram_geometry[2:])/2*.9
+            self.pupil_rho = min(self.holo.hologram_geometry[2:])/2*.9
         else:
             self.pupil_rho = rho
         self.rzern = None
@@ -268,6 +273,9 @@ class SLM(QDialog):
 
         if settings:
             self.dict2parameters(settings)
+
+        if len(self.pupils) == 0:
+            self.pupils.append(Pupil(self))
 
     def parameters2dict(self):
         """Stores all relevant parameters in a dictionary. Useful for saving"""
@@ -341,7 +349,7 @@ class SLM(QDialog):
 
         phase = 0
         for p in self.pupils:
-            phase += p.refresh_pupil(self.hologram_geometry)
+            phase += p.refresh_pupil()
 
         def printout(t, x):
             if isinstance(x, np.ndarray):
@@ -749,9 +757,6 @@ class PupilPanel(QFrame):
             else:
                 return ''
 
-        if 'zernike_labels' not in self.settings.keys():
-            self.settings['zernike_labels'] = dict()
-
         multiplier = 100
 
         top = QGroupBox('Zernike aberrations')
@@ -798,9 +803,9 @@ class PupilPanel(QFrame):
                 slider.setValue(fto100(self.pupil.aberration[i, 0], le))
             return f
 
-        def update_zlabel(le, settings, i):
+        def update_zlabel(le, i):
             def f():
-                settings['zernike_labels'][str(i)] = le.text()
+                self.pupil.zernike_labels[str(i)] = le.text()
             return f
 
         def update_spinbox(s, amp):
@@ -821,11 +826,11 @@ class PupilPanel(QFrame):
                     slider = QSlider(Qt.Horizontal)
                     spinbox = QDoubleSpinBox()
                     maxamp = max((4, self.pupil.aberration[i, 0]))
-                    if str(i) in self.settings['zernike_labels'].keys():
-                        zname = self.settings['zernike_labels'][str(i)]
-                    else:
+                    try:
+                        zname = self.pupil.zernike_labels[str(i)]
+                    except KeyError:
                         zname = default_zernike_name(i + 1, ntab[i], mtab[i])
-                        self.settings['zernike_labels'][str(i)] = zname
+                        self.pupil.zernike_labels[str(i)] = zname
                     lbn = QLineEdit(zname)
                     lbn.setMaximumWidth(120)
                     amp = QLineEdit(str(maxamp))
@@ -848,7 +853,7 @@ class PupilPanel(QFrame):
                     hand1 = update_spinbox(spinbox, amp)
                     hand2 = update_coeff(slider, i, amp)
                     hand3 = update_amp(spinbox, slider, amp, i)
-                    hand4 = update_zlabel(lbn, self.settings, i)
+                    hand4 = update_zlabel(lbn, i)
                     slider.valueChanged.connect(hand1)
                     spinbox.valueChanged.connect(hand2)
                     amp.editingFinished.connect(hand3)
@@ -1187,7 +1192,7 @@ class ControlWindow(QDialog):
 
         self.pupilsTab = QTabWidget()
         for p in self.slm.pupils:
-            self.pupilsTab.addTab(PupilPanel(p), p.get_name())
+            self.pupilsTab.addTab(PupilPanel(p), p.name)
 
         self.make_geometry_tab()
         self.make_general_display()
