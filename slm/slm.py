@@ -87,7 +87,7 @@ class Pupil():
             'xy': self.xy,
             'rho': self.rho,
             'angle_xy': self.angle_xy,
-            'aberration': self.aberration.tolist(),
+            'aberration': self.aberration.ravel().tolist(),
             'mask2d_on': self.mask2d_on,
             'mask2d_sign': self.mask2d_sign,
             'mask3d_on': self.mask3d_on,
@@ -321,19 +321,12 @@ class SLM(QDialog):
         for ps in d['pupils']:
             self.pupils.append(Pupil(self, ps))
 
-    def load(self, f):
-        d = json.load(f)
+    def load(self, d):
         self.dict2parameters(d)
         self.refresh_hologram()
-        return d
 
-    def save(self, f, merge=None):
-        d = self.parameters2dict()
-        if merge:
-            merge.update(d)
-        else:
-            merge = d
-        json.dump(merge, f)
+    def save(self):
+        return self.parameters2dict()
 
     def refresh_hologram(self):
         # flat file overwrites hologram dimensions
@@ -504,9 +497,9 @@ class PhaseDisplay(QWidget):
                 size = fig10.canvas.get_width_height()
                 assert(size[0] == self.arr.shape[0])
                 assert(size[1] == self.arr.shape[1])
-                drawn = np.fromstring(
+                drawn = np.frombuffer(
                             fig10.canvas.tostring_rgb(),
-                            dtype=np.uint8, sep='').reshape(
+                            dtype=np.uint8).reshape(
                                 (self.minsize, self.minsize, 3))
                 self.arr[:] = (
                     drawn[:, :, 0]*0x01 +
@@ -556,7 +549,8 @@ class MatplotlibWindow(QFrame):
         if self.slm.gray is None:
             return
         if self.im is None or self.slm.gray.shape != self.shape:
-            self.im = self.ax.imshow(self.slm.gray, cmap="gray")
+            self.im = self.ax.imshow(
+                self.slm.gray, cmap="gray", vmin=0, vmax=0xff)
             self.ax.axis("off")
             self.shape = self.slm.gray.shape
         self.im.set_data(self.slm.gray)
@@ -1295,27 +1289,19 @@ class ControlWindow(QDialog):
                 if fdiag:
                     try:
                         with open(fdiag, 'r') as f:
-                            slm.load(f)
-                            self.control1.reinitialize(slm.slm1)
-                            self.control2.reinitialize(slm.slm2)
-                            self.reinitialise_parameters_group()
+                            self.load(json.load(f))
                     except Exception as e:
-                        QMessageBox.information(self, 'Helper load 2 Error', str(e))
+                        QMessageBox.information(self, 'Error', str(e))
             return myf1
 
         def helper_save():
-            # self.setGeometry(*self.hologram_geometry)
             def myf1():
-                curg = self.geometry()
                 fdiag, _ = QFileDialog.getSaveFileName(
                     directory=datetime.now().strftime('%Y%m%d_%H%M%S.json'))
                 if fdiag:
                     try:
                         with open(fdiag, 'w') as f:
-                            self.settings['window'] = [
-                                curg.x(), curg.y(),
-                                curg.width(), curg.height()]
-                            slm.save(f, {'control': self.settings})
+                            json.dump(self.save(), f)
                     except Exception as e:
                         QMessageBox.information(self, 'Error', str(e))
             return myf1
@@ -1324,6 +1310,20 @@ class ControlWindow(QDialog):
         save.clicked.connect(helper_save())
 
         self.group_file = g
+
+    def load(self, d):
+        self.setGeometry(*d['controlwindow']['geometry'])
+        self.slm.load(d['slm'])
+
+    def save(self):
+        curg = self.geometry()
+        return {
+            'controlwindow': {
+                'geometry': [
+                    curg.x(), curg.y(), curg.width(), curg.height()],
+                },
+            'slm': self.slm.save(),
+            }
 
     def make_flat_tab(self):
         def helper_load_flat1():
@@ -1399,6 +1399,8 @@ class ControlWindow(QDialog):
         self.doubleFlatOnCheckBox = QCheckBox("Double flat on")
         self.doubleFlatOnCheckBox.setChecked(self.slm.double_flat_on)
         self.doubleFlatOnCheckBox.toggled.connect(self.slm.set_double_flat_on)
+        bplus = QPushButton('+ pupil')
+        bmin = QPushButton('- pupil')
 
         group = QGroupBox("Parameters")
         top = QGridLayout()
@@ -1407,8 +1409,10 @@ class ControlWindow(QDialog):
         top.addWidget(self.group_flat, 1, 0)
         top.addWidget(self.group_wrap, 1, 1)
         top.addWidget(self.doubleFlatOnCheckBox, 1, 2)
+        top.addWidget(bmin, 2, 0)
+        top.addWidget(bplus, 2, 1)
 
-        top.addWidget(self.group_file, 2, 0, 1, 3)
+        top.addWidget(self.group_file, 3, 0, 1, 3)
         group.setLayout(top)
         self.parametersGroup = group
 
@@ -1540,19 +1544,12 @@ if __name__ == '__main__':
     cwin = ControlWindow(slm)
     cwin.show()
 
-    # if args.load:
-    #     d = slm.load(args.load)['control']
-    #     args.load.close()
-    # else:
-    #     d = {}
-    # if args.double:
-    #     control = DoubleControl(slm, d)
-    # else:
-    #     control = Control(slm, d)
-    # control.show()
+    if args.load:
+        d = json.loads(args.load.read())
+        cwin.load(d)
 
     if args.console:
-        console = Console(slm, control)
+        console = Console(slm, cwin)
         console.show()
 
     sys.exit(app.exec_())
