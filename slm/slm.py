@@ -690,6 +690,17 @@ class PupilPanel(QFrame):
 
         self.group_2d = g
 
+        def f():
+            def f():
+                c.setChecked(self.pupil.mask2d_on)
+                if self.pupil.mask2d_sign == 1:
+                    sign2d.setCurrentIndex(0)
+                else:
+                    sign2d.setCurrentIndex(1)
+            return f
+
+        self.refresh_gui.append(f())
+
     def make_3d_tab(self):
         g = QGroupBox('3D STED')
 
@@ -710,48 +721,63 @@ class PupilPanel(QFrame):
         c.toggled.connect(self.helper_boolupdate(
             self.pupil.set_mask3d_on))
         l1.addWidget(c, 0, 0)
-        slider = QSlider(Qt.Horizontal)
-        slider.setMinimum(0)
-        slider.setMaximum(100)
-        slider.setFocusPolicy(Qt.StrongFocus)
-        slider.setTickPosition(QSlider.TicksBothSides)
-        slider.setTickInterval(20)
-        slider.setSingleStep(0.1)
-        slider.setValue(int(100*self.pupil.mask3d_radius))
-        spinbox = QDoubleSpinBox()
-        spinbox.setRange(0.0, 1.0)
-        spinbox.setSingleStep(0.01)
-        spinbox.setValue(self.pupil.mask3d_radius)
-        slider.valueChanged.connect(update_spinbox(spinbox))
+        slider1 = QSlider(Qt.Horizontal)
+        slider1.setMinimum(0)
+        slider1.setMaximum(100)
+        slider1.setFocusPolicy(Qt.StrongFocus)
+        slider1.setTickPosition(QSlider.TicksBothSides)
+        slider1.setTickInterval(20)
+        slider1.setSingleStep(0.1)
+        slider1.setValue(int(100*self.pupil.mask3d_radius))
+        spinbox1 = QDoubleSpinBox()
+        spinbox1.setRange(0.0, 1.0)
+        spinbox1.setSingleStep(0.01)
+        spinbox1.setValue(self.pupil.mask3d_radius)
+        slider1.valueChanged.connect(update_spinbox(spinbox1))
 
-        spinbox.valueChanged.connect(update_radius(
-            slider, self.pupil.set_mask3d_radius))
+        spinbox1.valueChanged.connect(update_radius(
+            slider1, self.pupil.set_mask3d_radius))
         l1.addWidget(QLabel('radius'), 0, 1)
-        l1.addWidget(spinbox, 0, 2)
-        l1.addWidget(slider, 0, 3)
+        l1.addWidget(spinbox1, 0, 2)
+        l1.addWidget(slider1, 0, 3)
 
-        slider = QSlider(Qt.Horizontal)
-        slider.setMinimum(0)
-        slider.setMaximum(200)
-        slider.setFocusPolicy(Qt.StrongFocus)
-        slider.setTickPosition(QSlider.TicksBothSides)
-        slider.setTickInterval(40)
-        slider.setSingleStep(0.1)
-        slider.setValue(int(100*self.pupil.mask3d_height))
-        spinbox = QDoubleSpinBox()
-        spinbox.setRange(0.0, 2.0)
-        spinbox.setSingleStep(0.01)
-        spinbox.setValue(self.pupil.mask3d_height)
-        slider.valueChanged.connect(update_spinbox(spinbox))
+        slider2 = QSlider(Qt.Horizontal)
+        slider2.setMinimum(0)
+        slider2.setMaximum(200)
+        slider2.setFocusPolicy(Qt.StrongFocus)
+        slider2.setTickPosition(QSlider.TicksBothSides)
+        slider2.setTickInterval(40)
+        slider2.setSingleStep(0.1)
+        slider2.setValue(int(100*self.pupil.mask3d_height))
+        spinbox2 = QDoubleSpinBox()
+        spinbox2.setRange(0.0, 2.0)
+        spinbox2.setSingleStep(0.01)
+        spinbox2.setValue(self.pupil.mask3d_height)
+        slider2.valueChanged.connect(update_spinbox(spinbox2))
 
-        spinbox.valueChanged.connect(update_radius(
-            slider, self.pupil.set_mask3d_height))
+        spinbox2.valueChanged.connect(update_radius(
+            slider2, self.pupil.set_mask3d_height))
         l1.addWidget(QLabel('height'), 1, 1)
-        l1.addWidget(spinbox, 1, 2)
-        l1.addWidget(slider, 1, 3)
+        l1.addWidget(spinbox2, 1, 2)
+        l1.addWidget(slider2, 1, 3)
         g.setLayout(l1)
 
         self.group_3d = g
+
+        def f():
+            def f():
+                c.setChecked(self.pupil.mask3d_on)
+                for p in (slider1, slider2, spinbox1, spinbox2):
+                    p.blockSignals(True)
+                spinbox1.setValue(self.pupil.mask3d_radius)
+                slider1.setValue(int(100*self.pupil.mask3d_radius))
+                spinbox2.setValue(self.pupil.mask3d_height)
+                slider2.setValue(int(100*self.pupil.mask3d_height))
+                for p in (slider1, slider2, spinbox1, spinbox2):
+                    p.blockSignals(False)
+            return f
+
+        self.refresh_gui.append(f())
 
     def make_phase_tab(self):
         g = QGroupBox('Phase')
@@ -1376,6 +1402,13 @@ class ControlWindow(QDialog):
         g.setLayout(l1)
         self.group_flat = g
 
+        def f():
+            def f():
+                cboxlf.setChecked(self.slm.flat_on)
+            return f
+
+        self.refresh_gui.append(f())
+
     def make_geometry_tab(self):
         def handle_geometry(ind, le):
             def f():
@@ -1450,6 +1483,13 @@ class ControlWindow(QDialog):
         l1.addWidget(lewrap, 0, 0)
         g.setLayout(l1)
         self.group_wrap = g
+
+        def f():
+            def f():
+                lewrap.setText(str(self.slm.wrap_value))
+            return f
+
+        self.refresh_gui.append(f())
 
     def make_parameters_group(self):
         self.make_file_tab()
