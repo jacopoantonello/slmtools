@@ -873,8 +873,9 @@ class PupilPanel(QFrame):
                 s.setValue(t/multiplier*(2*maxrad) - maxrad)
             return f
 
-        def update_zernike_rows():
-            mynk = self.pupil.rzern.nk
+        def update_zernike_rows(mynk=None):
+            if mynk is None:
+                mynk = self.pupil.rzern.nk
             ntab = self.pupil.rzern.ntab
             mtab = self.pupil.rzern.mtab
             if len(zernike_rows) < mynk:
@@ -986,6 +987,14 @@ class PupilPanel(QFrame):
         lezm.editingFinished.connect(change_radial)
 
         self.group_aberration = top
+
+        def f():
+            def f():
+                update_zernike_rows(0)
+                update_zernike_rows()
+            return f
+
+        self.refresh_gui.append(f())
 
     def make_grating_tab(self):
         """Position tab is meant to help positionning the phase mask
