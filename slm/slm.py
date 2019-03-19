@@ -59,7 +59,7 @@ class Pupil():
 
     xv = None
     yv = None
-    name = 'pupil'
+    name = None
     rzern = None
     xy = [0.0, 0.0]
     rho = 50.0
@@ -75,6 +75,7 @@ class Pupil():
     def __init__(self, holo, settings=None):
         self.log = logging.getLogger(self.__class__.__name__)
         self.holo = holo
+        self.name = f'pupil {len(self.holo.pupils)}'
 
         if settings:
             self.dict2parameters(settings)
@@ -293,6 +294,16 @@ class SLM(QDialog):
             self.pupils.append(Pupil(self))
 
         self.refreshHologramSignal.connect(self.update)
+
+    def add_pupil(self):
+        p = Pupil(self)
+        self.pupils.append(p)
+        self.refresh_hologram()
+        return p
+
+    def pop_pupil(self):
+        self.pupils.pop()
+        self.refresh_hologram()
 
     def parameters2dict(self):
         """Stores all relevant parameters in a dictionary. Useful for saving"""
@@ -992,6 +1003,9 @@ class PupilPanel(QFrame):
             def f():
                 update_zernike_rows(0)
                 update_zernike_rows()
+                self.phase_display.update_phase(
+                    self.pupil.rzern.n, self.pupil.aberration)
+                self.phase_display.update()
             return f
 
         self.refresh_gui.append(f())
@@ -1369,11 +1383,16 @@ class ControlWindow(QDialog):
     def load(self, d):
         self.setGeometry(*d['controlwindow']['geometry'])
         self.slm.load(d['slm'])
+        while self.pupilsTab.count() > len(self.slm.pupils):
+            self.pupilsTab.removeTab(self.pupilsTab.count() - 1)
         for i in range(len(self.slm.pupils)):
             if i < len(self.pupilPanels):
                 self.pupilPanels[i].pupil = self.slm.pupils[i]
             else:
-                raise NotImplementedError()
+                p = self.slm.pupils[i]
+                pp = PupilPanel(p)
+                self.pupilPanels.append(pp)
+                self.pupilsTab.addTab(pp, p.name)
         for pp in self.pupilPanels:
             for f in pp.refresh_gui:
                 f()
@@ -1507,7 +1526,7 @@ class ControlWindow(QDialog):
         self.doubleFlatOnCheckBox = QCheckBox("Double flat on")
         self.doubleFlatOnCheckBox.setChecked(self.slm.double_flat_on)
         self.doubleFlatOnCheckBox.toggled.connect(self.slm.set_double_flat_on)
-        bplus = QPushButton('+ pupil')
+        bpls = QPushButton('+ pupil')
         bmin = QPushButton('- pupil')
 
         group = QGroupBox("Parameters")
@@ -1518,11 +1537,31 @@ class ControlWindow(QDialog):
         top.addWidget(self.group_wrap, 1, 1)
         top.addWidget(self.doubleFlatOnCheckBox, 1, 2)
         top.addWidget(bmin, 2, 0)
-        top.addWidget(bplus, 2, 1)
+        top.addWidget(bpls, 2, 1)
 
         top.addWidget(self.group_file, 3, 0, 1, 3)
         group.setLayout(top)
         self.parametersGroup = group
+
+        def fp():
+            def f():
+                p = self.slm.add_pupil()
+                pp = PupilPanel(p)
+                self.pupilPanels.append(pp)
+                self.pupilsTab.addTab(pp, p.name)
+            return f
+
+        def fm():
+            def f():
+                if len(self.slm.pupils) == 1:
+                    return
+                self.pupilsTab.removeTab(len(self.slm.pupils) - 1)
+                self.pupilPanels.pop()
+                self.slm.pop_pupil()
+            return f
+
+        bpls.clicked.connect(fp())
+        bmin.clicked.connect(fm())
 
     def closeEvent(self, event):
         if self.can_close:
