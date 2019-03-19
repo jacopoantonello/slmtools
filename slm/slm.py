@@ -59,23 +59,22 @@ class Pupil():
 
     xv = None
     yv = None
+    name = 'pupil'
+    rzern = None
+    xy = [0.0, 0.0]
+    rho = 50.0
+    angle_xy = [0.0, 0.0]
+    aberration = np.zeros((15, 1))
+    mask2d_on = 0.0
+    mask2d_sign = 1.0
+    mask3d_on = 0.0
+    mask3d_radius = 0.6
+    mask3d_height = 1.0
+    zernike_labels = dict()
 
     def __init__(self, holo, settings=None):
         self.log = logging.getLogger(self.__class__.__name__)
         self.holo = holo
-
-        self.name = 'pupil'
-        self.rzern = None
-        self.xy = [0.0, 0.0]
-        self.rho = 50.0
-        self.angle_xy = [0.0, 0.0]
-        self.aberration = np.zeros((15, 1))
-        self.mask2d_on = 0.0
-        self.mask2d_sign = 1.0
-        self.mask3d_on = 0.0
-        self.mask3d_radius = 0.6
-        self.mask3d_height = 1.0
-        self.zernike_labels = dict()
 
         if settings:
             self.dict2parameters(settings)
@@ -97,7 +96,8 @@ class Pupil():
 
     def dict2parameters(self, d):
         self.name = d['name']
-        self.zernike_labels = d['zernike_labels']
+        self.zernike_labels.update(d['zernike_labels'])
+        self.xy = d['xy']
         self.rho = d['rho']
         self.aberration = np.array(d['aberration']).reshape((-1, 1))
         self.mask2d_on = d['mask2d_on']
@@ -265,6 +265,8 @@ class Pupil():
 
 class SLM(QDialog):
 
+    hologram_geometry = [0, 0, 400, 200]
+
     gray = None
     pupils = []
     refreshHologramSignal = pyqtSignal()
@@ -279,7 +281,6 @@ class SLM(QDialog):
         self.flat = None
         self.flat_on = 0.0
         self.double_flat_on = False
-        self.hologram_geometry = [0, 0, 400, 200]
 
         self.arr = None
         self.qim = None
@@ -414,7 +415,7 @@ class SLM(QDialog):
             self.hologram_geometry[:2] = geometry[:2]
             self.copy_flat_shape()
         elif geometry is not None:
-            self.hologram_geometry[:] = geometry[:]
+            self.hologram_geometry = geometry
         if refresh:
             self.refresh_hologram()
 
@@ -558,6 +559,7 @@ class MatplotlibWindow(QFrame):
 
 
 class PupilPanel(QFrame):
+    refresh_gui = []
 
     def __init__(self, pupil, parent=None):
         """Subclass for a control GUI.
@@ -587,25 +589,6 @@ class PupilPanel(QFrame):
         top.addWidget(self.group_aberration, 4, 0, 2, 2)
         self.setLayout(top)
         self.top = top
-
-    @staticmethod
-    def helper1(name, labels, mins, handlers, curvals, Validator):
-        group = QGroupBox(name)
-        l1 = QGridLayout()
-        for i, tup in enumerate(zip(labels, mins, handlers, curvals)):
-            txt, mini, handler, curval = tup
-            l1.addWidget(QLabel(txt), 0, 2*i)
-            le = QLineEdit(str(curval))
-            le.editingFinished.connect(handler(i, le))
-            le.setMaximumWidth(50)
-            val = Validator()
-            val.setFixup(curval)
-            le.setValidator(val)
-            if mini:
-                val.setBottom(mini)
-            l1.addWidget(le, 0, 2*i + 1)
-        group.setLayout(l1)
-        return group
 
     def helper_boolupdate(self, mycallback):
         def f(i):
@@ -637,13 +620,45 @@ class PupilPanel(QFrame):
                 le.setText(str(self.pupil.rho))
             return f
 
-        self.group_pupil = self.helper1(
-            'Pupil',
-            ['x0', 'y0', 'radius'],
-            [None, None, 10],
-            [handle_xy, handle_xy, handle_rho],
-            [self.pupil.xy[0], self.pupil.xy[1], self.pupil.rho],
-            MyQDoubleValidator)
+        group = QGroupBox('Pupil')
+        l1 = QGridLayout()
+
+        def help1(txt, mini, handler, curval, i):
+            l1.addWidget(QLabel(txt), 0, 2*i)
+            le = QLineEdit(str(curval))
+            le.editingFinished.connect(handler(i, le))
+            le.setMaximumWidth(50)
+            val = MyQDoubleValidator()
+            val.setFixup(curval)
+            le.setValidator(val)
+            if mini:
+                val.setBottom(mini)
+            l1.addWidget(le, 0, 2*i + 1)
+            return le
+
+        lex = help1('x0', None, handle_xy, self.pupil.xy[0], 0)
+        ley = help1('y0', None, handle_xy, self.pupil.xy[1], 1)
+        lerho = help1('radius', 10, handle_rho, self.pupil.rho, 2)
+
+        def make_f():
+            def t1():
+                return self.pupil.xy, self.pupil.rho
+
+            def f():
+                xy, rho = t1()
+                for p in (lex, ley, lerho):
+                    p.blockSignals(True)
+                lex.setText(str(xy[0]))
+                ley.setText(str(xy[1]))
+                lerho.setText(str(rho))
+                for p in (lex, ley, lerho):
+                    p.blockSignals(False)
+            return f
+
+        self.refresh_gui.append(make_f())
+
+        group.setLayout(l1)
+        self.group_pupil = group
 
     def make_2d_tab(self):
         g = QGroupBox('2D STED')
@@ -936,7 +951,8 @@ class PupilPanel(QFrame):
             self.phase_display.update()
             lezm.setText(str(self.pupil.rzern.n))
 
-        self.phase_display.update_phase(self.pupil.rzern.n, self.pupil.aberration)
+        self.phase_display.update_phase(
+            self.pupil.rzern.n, self.pupil.aberration)
         zernike_rows = list()
         update_zernike_rows()
 
@@ -1019,6 +1035,24 @@ class PupilPanel(QFrame):
         spinbox_y.valueChanged.connect(hand4)
 
         self.group_grating = pos
+
+        def f():
+            def p1():
+                return self.pupil.angle_xy[0], self.pupil.angle_xy[1]
+
+            def f():
+                for p in (spinbox_x, spinbox_y, slider_x, slider_y):
+                    p.blockSignals(True)
+                xy = p1()
+                spinbox_x.setValue(xy[0])
+                spinbox_y.setValue(xy[1])
+                slider_x.setValue(fto100(xy[0], amp))
+                slider_y.setValue(fto100(xy[1], amp))
+                for p in (spinbox_x, spinbox_y, slider_x, slider_y):
+                    p.blockSignals(False)
+            return f
+
+        self.refresh_gui.append(f())
 
     def keyPressEvent(self, event):
         pass
@@ -1188,6 +1222,9 @@ class SingleZernikeControl:
 
 class ControlWindow(QDialog):
 
+    pupilPanels = []
+    refresh_gui = []
+
     can_close = True
     close_slm = True
     sig_acquire = pyqtSignal(tuple)
@@ -1210,7 +1247,9 @@ class ControlWindow(QDialog):
 
         self.pupilsTab = QTabWidget()
         for p in self.slm.pupils:
-            self.pupilsTab.addTab(PupilPanel(p), p.name)
+            pp = PupilPanel(p)
+            self.pupilPanels.append(pp)
+            self.pupilsTab.addTab(pp, p.name)
 
         self.make_geometry_tab()
         self.make_general_display()
@@ -1249,25 +1288,6 @@ class ControlWindow(QDialog):
             mycallback(i)
             myupdate()
         return f
-
-    @staticmethod
-    def helper1(name, labels, mins, handlers, curvals, Validator):
-        group = QGroupBox(name)
-        l1 = QGridLayout()
-        for i, tup in enumerate(zip(labels, mins, handlers, curvals)):
-            txt, mini, handler, curval = tup
-            l1.addWidget(QLabel(txt), 0, 2*i)
-            le = QLineEdit(str(curval))
-            le.editingFinished.connect(handler(i, le))
-            le.setMaximumWidth(50)
-            val = Validator()
-            val.setFixup(curval)
-            le.setValidator(val)
-            if mini:
-                val.setBottom(mini)
-            l1.addWidget(le, 0, 2*i + 1)
-        group.setLayout(l1)
-        return group
 
     def make_general_display(self):
         self.display = MatplotlibWindow(self.slm, figsize=(8, 6))
@@ -1314,6 +1334,16 @@ class ControlWindow(QDialog):
     def load(self, d):
         self.setGeometry(*d['controlwindow']['geometry'])
         self.slm.load(d['slm'])
+        for i in range(len(self.slm.pupils)):
+            if i < len(self.pupilPanels):
+                self.pupilPanels[i].pupil = self.slm.pupils[i]
+            else:
+                raise NotImplementedError()
+        for pp in self.pupilPanels:
+            for f in pp.refresh_gui:
+                f()
+        for f in self.refresh_gui:
+            f()
 
     def save(self):
         curg = self.geometry()
@@ -1359,12 +1389,41 @@ class ControlWindow(QDialog):
                 le.setText(str(self.slm.hologram_geometry[ind]))
             return f
 
-        self.group_geometry = self.helper1(
-            'Geometry',
-            ['x', 'y', 'width', 'height'],
-            [None, None, 100, 100],
-            [handle_geometry]*4,
-            self.slm.hologram_geometry, MyQIntValidator)
+        group = QGroupBox('Geometry')
+        l1 = QGridLayout()
+        labels = ['x', 'y', 'width', 'height']
+        mins = [None, None, 100, 100]
+        les = []
+
+        for i, tup in enumerate(zip(labels, mins)):
+            txt, mini = tup
+            l1.addWidget(QLabel(txt), 0, 2*i)
+            le = QLineEdit(str(self.slm.hologram_geometry[i]))
+            le.editingFinished.connect(handle_geometry(i, le))
+            le.setMaximumWidth(50)
+            val = MyQIntValidator()
+            val.setFixup(self.slm.hologram_geometry[i])
+            le.setValidator(val)
+            if mini:
+                val.setBottom(mini)
+            l1.addWidget(le, 0, 2*i + 1)
+            les.append(le)
+
+        def f():
+            def t():
+                return self.slm.hologram_geometry
+
+            def f():
+                g = t()
+                for i, le in enumerate(les):
+                    le.blockSignals(True)
+                    le.setText(str(g[i]))
+                    le.blockSignals(False)
+            return f
+
+        self.refresh_gui.append(f())
+        group.setLayout(l1)
+        self.group_geometry = group
 
     def make_wrap_tab(self):
         g = QGroupBox('Wrap value')
