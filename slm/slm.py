@@ -12,7 +12,6 @@ import logging
 from time import time
 from datetime import datetime
 from math import sqrt
-from scipy.ndimage import imread
 
 from PyQt5.QtCore import Qt, QMutex, pyqtSignal
 from PyQt5.QtGui import (
@@ -415,7 +414,7 @@ class SLM(QDialog):
             try:
                 self.flat_file = fname
                 self.flat = np.ascontiguousarray(
-                    imread(fname, mode='L'), dtype=np.float)/255
+                    plt.imread(fname), dtype=np.float)/255
                 self.copy_flat_shape()
             except Exception:
                 self.flat_file = None
