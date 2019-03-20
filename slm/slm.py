@@ -12,7 +12,7 @@ import logging
 from time import time
 from datetime import datetime
 from math import sqrt
-from scipy.misc import imread
+from scipy.ndimage import imread
 
 from PyQt5.QtCore import Qt, QMutex, pyqtSignal
 from PyQt5.QtGui import (
@@ -415,7 +415,7 @@ class SLM(QDialog):
             try:
                 self.flat_file = fname
                 self.flat = np.ascontiguousarray(
-                    imread(fname), dtype=np.float)/255
+                    imread(fname, mode='L'), dtype=np.float)/255
                 self.copy_flat_shape()
             except Exception:
                 self.flat_file = None
@@ -1647,27 +1647,14 @@ def add_arguments(parser):
         metavar='JSON', help='Load a previous configuration file')
 
 
-def new_slm_window(app, args):
-    if args.double:
-        slm = DoubleSLM()
-    else:
-        slm = SLM()
+def new_slm_window(app, args, settings):
+    slm = SLM()
     slm.show()
-    slm.refresh_hologram()
 
-    if args.slm_settings:
-        d = slm.load(args.slm_settings)['control']
-        args.slm_settings.close()
-        args.slm_settings = args.slm_settings.name
-    else:
-        d = {}
-    if args.double:
-        control = DoubleControl(slm, d)
-    else:
-        control = Control(slm, d)
-    control.show()
+    cwin = ControlWindow(slm)
+    cwin.show()
 
-    return control
+    return cwin
 
 
 if __name__ == '__main__':
