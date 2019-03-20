@@ -57,22 +57,22 @@ class MyQIntValidator(QIntValidator):
 
 class Pupil():
 
-    xv = None
-    yv = None
-    name = None
-    rzern = None
-    xy = [0.0, 0.0]
-    rho = 50.0
-    angle_xy = [0.0, 0.0]
-    aberration = np.zeros((15, 1))
-    mask2d_on = 0.0
-    mask2d_sign = 1.0
-    mask3d_on = 0.0
-    mask3d_radius = 0.6
-    mask3d_height = 1.0
-    zernike_labels = dict()
-
     def __init__(self, holo, settings=None):
+        self.xv = None
+        self.yv = None
+        self.name = None
+        self.rzern = None
+        self.xy = [0.0, 0.0]
+        self.rho = 50.0
+        self.angle_xy = [0.0, 0.0]
+        self.aberration = np.zeros((15, 1))
+        self.mask2d_on = 0.0
+        self.mask2d_sign = 1.0
+        self.mask3d_on = 0.0
+        self.mask3d_radius = 0.6
+        self.mask3d_height = 1.0
+        self.zernike_labels = {}
+
         self.log = logging.getLogger(self.__class__.__name__)
         self.holo = holo
         self.name = f'pupil {len(self.holo.pupils)}'
@@ -109,6 +109,7 @@ class Pupil():
         self.angle_xy = d['angle_xy']
 
     def refresh_pupil(self):
+        self.log.info(f'refresh_pupil {self.name} START xy:{self.xy}')
         dirty = False
         if (
                 self.xv is None or
@@ -116,7 +117,7 @@ class Pupil():
                 self.xv.shape[0] != self.holo.hologram_geometry[3] or
                 self.xv.shape[1] != self.holo.hologram_geometry[2]):
 
-            self.log.info('allocating Zernike')
+            self.log.info(f'refresh_pupil {self.name} allocating Zernike')
 
             def make_dd(rho, n, x):
                 scale = (n/2)/rho
@@ -154,9 +155,11 @@ class Pupil():
         def printout(t, x):
             if isinstance(x, np.ndarray):
                 self.log.info(
-                    f'{t} [{x.min():g}, {x.max():g}] {x.mean():g}')
+                    f'refresh_pupil {self.name} {t} ' +
+                    f'[{x.min():g}, {x.max():g}] {x.mean():g}')
             else:
-                self.log.info(str(t) + ' [0.0, 0.0] 0.0')
+                self.log.info(
+                    f'refresh_pupil {self.name} ' + str(t) + ' [0.0, 0.0] 0.0')
 
         printout('phi', self.phi)
         printout('phi2d', self.phi2d)
@@ -168,6 +171,7 @@ class Pupil():
             self.mask3d_on*self.phi3d +
             self.grating)
 
+        self.log.info(f'refresh_pupil {self.name} END')
         return phase
 
     def make_phi2d(self):
@@ -195,7 +199,6 @@ class Pupil():
         tt = self.angle_xy[0]*(
             masks[0, :, :] - self.xy[0] - n/2) + self.angle_xy[1]*(
             masks[1, :, :] - self.xy[1] - m/2)
-        self.log.info(f'make grating {str(self.angle_xy)}')
         tt = tt/value_max*2*np.pi
         tt[self.rr >= 1.0] = 0
         self.grating = np.flipud(tt)
@@ -266,16 +269,15 @@ class Pupil():
 
 class SLM(QDialog):
 
-    hologram_geometry = [0, 0, 400, 200]
-
-    gray = None
-    pupils = []
     refreshHologramSignal = pyqtSignal()
 
     def __init__(self, settings={}):
         super().__init__(
             parent=None,
             flags=Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+
+        self.hologram_geometry = [0, 0, 400, 200]
+        self.pupils = []
 
         self.log = logging.getLogger(self.__class__.__name__)
         self.flat_file = None
@@ -341,7 +343,7 @@ class SLM(QDialog):
         return self.parameters2dict()
 
     def refresh_hologram(self):
-        # flat file overwrites hologram dimensions
+        self.log.info('refresh_hologram START')
 
         # [0, 1]
         if self.flat_file is None:
@@ -358,15 +360,13 @@ class SLM(QDialog):
                 self.qim is None or
                 self.arr.shape[0] != self.hologram_geometry[3] or
                 self.arr.shape[1] != self.hologram_geometry[2]):
-            self.log.info('refresh_hologram(): ALLOCATING arr & qim')
+            self.log.info('refresh_hologram ALLOCATING arr & qim')
             self.arr = np.zeros(
                 shape=(self.hologram_geometry[3], self.hologram_geometry[2]),
                 dtype=np.uint32)
             self.qim = QImage(
                 self.arr.data, self.arr.shape[1], self.arr.shape[0],
                 QImage.Format_RGB32)
-
-        self.log.info('refresh_hologram(): repaint')
 
         phase = 0
         for p in self.pupils:
@@ -375,9 +375,11 @@ class SLM(QDialog):
         def printout(t, x):
             if isinstance(x, np.ndarray):
                 self.log.info(
-                    f'{t} [{x.min():g}, {x.max():g}] {x.mean():g}')
+                    f'refresh_hologram {t} ' +
+                    f'[{x.min():g}, {x.max():g}] {x.mean():g}')
             else:
-                self.log.info(str(t) + ' [0.0, 0.0] 0.0')
+                self.log.info(
+                    f'refresh_hologram {t} ' + str(t) + ' [0.0, 0.0] 0.0')
 
         # [0, 1] waves
         background = self.flat_on*self.flat
@@ -398,7 +400,7 @@ class SLM(QDialog):
         self.gray = gray
         self.arr[:] = gray.astype(np.uint32)*0x010101
 
-        self.log.info(f'{str(time())}')
+        self.log.info(f'refresh_hologram END {str(time())}')
         self.refreshHologramSignal.emit()
 
     def copy_flat_shape(self):
@@ -460,16 +462,17 @@ class SLM(QDialog):
 
 
 class PhaseDisplay(QWidget):
-    # TODO use regular matplotlib
-    dirty = False
-    size = [0, 0]
-    phase = None
-    arr = None
-    qim = None
-    rzern = None
 
     def __init__(self):
         super().__init__()
+
+        self.dirty = False
+        self.size = [0, 0]
+        self.phase = None
+        self.arr = None
+        self.qim = None
+        self.rzern = None
+
         self.setMinimumWidth(200)
         self.setMinimumHeight(200)
 
@@ -526,11 +529,11 @@ class PhaseDisplay(QWidget):
 
 class MatplotlibWindow(QFrame):
 
-    shape = None
-    im = None
-
     def __init__(self, slm, parent=None, toolbar=True, figsize=None):
         super().__init__(parent)
+
+        self.shape = None
+        self.im = None
 
         # a figure instance to plot on
         if figsize is None:
@@ -570,8 +573,6 @@ class MatplotlibWindow(QFrame):
 
 
 class PupilPanel(QFrame):
-    refresh_gui = []
-
     def __init__(self, pupil, parent=None):
         """Subclass for a control GUI.
         Parameters:
@@ -580,7 +581,7 @@ class PupilPanel(QFrame):
             is_parent: bool. Useful in the case of doublepass to determine
                 for instance which widget determines the overall geometry"""
         super().__init__(parent)
-
+        self.refresh_gui = []
         self.pupil = pupil
 
         self.make_pupil_tab()
@@ -606,18 +607,22 @@ class PupilPanel(QFrame):
             mycallback(i)
         return f
 
+    def get_pupil(self):
+        return self.pupil
+
     def make_pupil_tab(self):
         def handle_xy(ind, le):
             def f():
+                p = self.get_pupil()
                 try:
                     fval = float(le.text())
                 except Exception:
-                    le.setText(str(self.pupil.xy[ind]))
+                    le.setText(str(p.xy[ind]))
                     return
-                xy = [self.pupil.xy[0], self.pupil.xy[1]]
+                xy = [p.xy[0], p.xy[1]]
                 xy[ind] = fval
-                self.pupil.set_xy(xy)
-                le.setText(str(self.pupil.xy[ind]))
+                p.set_xy(xy)
+                le.setText(str(p.xy[ind]))
             return f
 
         def handle_rho(ind, le):
@@ -1271,16 +1276,16 @@ class SingleZernikeControl:
 
 class ControlWindow(QDialog):
 
-    pupilPanels = []
-    refresh_gui = []
-
-    can_close = True
-    close_slm = True
     sig_acquire = pyqtSignal(tuple)
     sig_release = pyqtSignal(tuple)
 
     def __init__(self, slm, settings={}):
         super().__init__(parent=None)
+        self.pupilPanels = []
+        self.refresh_gui = []
+        self.can_close = True
+        self.close_slm = True
+
         self.slm = slm
         self.settings = settings
         self.mutex = QMutex()
