@@ -573,7 +573,7 @@ class MatplotlibWindow(QFrame):
 
 
 class PupilPanel(QFrame):
-    def __init__(self, pupil, parent=None):
+    def __init__(self, pupil, ptabs, parent=None):
         """Subclass for a control GUI.
         Parameters:
             slm: SLM instance
@@ -583,6 +583,7 @@ class PupilPanel(QFrame):
         super().__init__(parent)
         self.refresh_gui = []
         self.pupil = pupil
+        self.ptabs = ptabs
 
         self.make_pupil_tab()
         self.make_2d_tab()
@@ -601,6 +602,9 @@ class PupilPanel(QFrame):
         top.addWidget(self.group_aberration, 4, 0, 2, 2)
         self.setLayout(top)
         self.top = top
+
+        self.pindex = self.ptabs.count()
+        self.ptabs.addTab(self, self.pupil.name)
 
     def helper_boolupdate(self, mycallback):
         def f(i):
@@ -655,6 +659,16 @@ class PupilPanel(QFrame):
         lex = help1('x0', None, handle_xy, self.pupil.xy[0], 0)
         ley = help1('y0', None, handle_xy, self.pupil.xy[1], 1)
         lerho = help1('radius', 10, handle_rho, self.pupil.rho, 2)
+        lename = QLineEdit(self.pupil.name)
+        l1.addWidget(lename, 1, 0, 1, 6)
+
+        def fname():
+            def f():
+                self.pupil.name = lename.text()
+                self.ptabs.setTabText(self.pindex, self.pupil.name)
+            return f
+
+        lename.editingFinished.connect(fname())
 
         def make_f():
             def t1():
@@ -1301,9 +1315,8 @@ class ControlWindow(QDialog):
 
         self.pupilsTab = QTabWidget()
         for p in self.slm.pupils:
-            pp = PupilPanel(p)
+            pp = PupilPanel(p, self.pupilsTab)
             self.pupilPanels.append(pp)
-            self.pupilsTab.addTab(pp, p.name)
 
         self.make_geometry_tab()
         self.make_general_display()
