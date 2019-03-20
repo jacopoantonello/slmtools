@@ -1401,16 +1401,13 @@ class ControlWindow(QDialog):
     def load(self, d):
         self.setGeometry(*d['controlwindow']['geometry'])
         self.slm.load(d['slm'])
-        while self.pupilsTab.count() > len(self.slm.pupils):
+        self.pupilsTab.clear()
+        while self.pupilsTab.count():
             self.pupilsTab.removeTab(self.pupilsTab.count() - 1)
         for i in range(len(self.slm.pupils)):
-            if i < len(self.pupilPanels):
-                self.pupilPanels[i].pupil = self.slm.pupils[i]
-            else:
-                p = self.slm.pupils[i]
-                pp = PupilPanel(p)
-                self.pupilPanels.append(pp)
-                self.pupilsTab.addTab(pp, p.name)
+            p = self.slm.pupils[i]
+            pp = PupilPanel(p, self.pupilsTab)
+            self.pupilPanels.append(pp)
         for pp in self.pupilPanels:
             for f in pp.refresh_gui:
                 f()
