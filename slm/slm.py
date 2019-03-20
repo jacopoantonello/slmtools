@@ -1561,9 +1561,8 @@ class ControlWindow(QDialog):
         def fp():
             def f():
                 p = self.slm.add_pupil()
-                pp = PupilPanel(p)
+                pp = PupilPanel(p, self.pupilsTab)
                 self.pupilPanels.append(pp)
-                self.pupilsTab.addTab(pp, p.name)
             return f
 
         def fm():
