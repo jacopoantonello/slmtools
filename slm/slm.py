@@ -1347,6 +1347,7 @@ class ControlWindow(QDialog):
 
         self.sig_release.connect(make_release_hand())
         self.sig_acquire.connect(make_acquire_hand())
+        self.slm.refresh_hologram()
 
     @staticmethod
     def helper_boolupdate(mycallback, myupdate):
@@ -1646,12 +1647,15 @@ def add_arguments(parser):
         metavar='JSON', help='Load a previous configuration file')
 
 
-def new_slm_window(app, args, settings):
+def new_slm_window(app, args, settings=None):
     slm = SLM()
     slm.show()
 
     cwin = ControlWindow(slm)
     cwin.show()
+
+    if settings:
+        cwin.load(settings)
 
     return cwin
 
@@ -1665,9 +1669,6 @@ if __name__ == '__main__':
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--dump', action='store_true')
     parser.add_argument('--console', action='store_true')
-    parser.add_argument('--double', action='store_true')
-    parser.add_argument('--single', action='store_false', dest='double')
-    parser.set_defaults(double=True)
     parser.add_argument('--no-file-log', action='store_true')
     parser.add_argument('--file-log', action='store_false', dest='no_file_log')
     parser.set_defaults(no_file_log=True)
