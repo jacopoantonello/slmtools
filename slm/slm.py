@@ -295,6 +295,7 @@ class SLM(QDialog):
             self.pupils.append(Pupil(self))
 
         self.refreshHologramSignal.connect(self.update)
+        self.refresh_hologram()
 
     def add_pupil(self):
         p = Pupil(self)
@@ -1134,7 +1135,7 @@ def get_default_parameters():
                 'min': 5,
                 'max': 6,
                 'all': 1,
-                'pupil': 1,
+                'pupil': 0,
                 },
             'DoubleZernike': {
                 'include': [],
@@ -1218,14 +1219,12 @@ class SingleZernikeControl:
         self.pars = pars
         self.log = logging.getLogger(self.__class__.__name__)
         self.slm = slm
+        self.pupil_index = pars['control']['SingleZernike']['pupil']
+        self.pupil = self.slm.pupils[self.pupil_index]
 
-        if pars['control']['SingleZernike']['pupil'] == 1:
-            self.slm1 = slm.slm1
-        else:
-            self.slm1 = slm.slm2
+        nz = self.pupil.aberration.size
 
-        nz = self.slm1.aberration.size
-        if pars['control']['SingleZernike']['pupil'] == 1:
+        if pars['control']['SingleZernike']['all'] == 1:
             indices = np.arange(1, nz + 1)
         else:
             indices = get_noll_indices(pars)
@@ -1234,10 +1233,11 @@ class SingleZernikeControl:
 
         self.ndof = ndof
         self.h5f = h5f
-        self.z0 = self.slm1.aberration.ravel()
+        self.z0 = self.pupil.aberration.ravel()
 
+        self.h5_save('slm', json.dumps(self.slm.save()))
         self.h5_save('indices', self.indices)
-        self.h5_save('flat', self.slm1.flat)
+        self.h5_save('flat', self.slm.flat)
         self.h5_save('z0', self.z0)
         self.P = None
 
@@ -1274,15 +1274,15 @@ class SingleZernikeControl:
 
     def write(self, x):
         assert(x.size == self.ndof)
-        z1 = np.zeros(self.slm1.aberration.size)
+        z1 = np.zeros(self.pupil.aberration.size)
         z1[self.indices - 1] = x[:]
         if self.P is not None:
             z2 = np.dot(self.P, z1 + self.z0)
         else:
             z2 = z1 + self.z0
-        self.slm1.set_aberration(z2.reshape(-1, 1))
+        self.pupil.set_aberration(z2.reshape(-1, 1))
 
-        self.h5_append('flat_on', bool(self.slm1.flat_on))
+        self.h5_append('flat_on', bool(self.slm.flat_on))
         self.h5_append('x', x)
         self.h5_append('z2', z2)
 
@@ -1329,10 +1329,11 @@ class ControlWindow(QDialog):
 
         def make_release_hand():
             def f(t):
-                # self.control.u[:] = t[0].u
-                # self.zpanel.z[:] = self.control.u2z()
-                # self.zpanel.update_controls()
-                # self.zpanel.update_gui()
+                for pp in self.pupilPanels:
+                    for f in pp.refresh_gui:
+                        f()
+                for f in self.refresh_gui:
+                    f()
                 self.setEnabled(True)
                 self.can_close = True
                 self.mutex.unlock()
@@ -1591,7 +1592,6 @@ class ControlWindow(QDialog):
 
     def release_control(self, control, h5f):
         self.sig_release.emit((control, h5f))
-        assert(False)
 
 
 class Console(QDialog):
@@ -1687,7 +1687,6 @@ if __name__ == '__main__':
 
     slm = SLM()
     slm.show()
-    slm.refresh_hologram()
 
     cwin = ControlWindow(slm)
     cwin.show()
