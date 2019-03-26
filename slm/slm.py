@@ -1638,10 +1638,6 @@ class Console(QDialog):
 
 
 def add_arguments(parser):
-    parser.add_argument('--slm-dump', action='store_true')
-    parser.add_argument('--slm-double', action='store_true')
-    parser.add_argument('--slm-single', action='store_false', dest='double')
-    parser.set_defaults(slm_double=True)
     parser.add_argument(
         '--slm-settings', type=argparse.FileType('r'), default=None,
         metavar='JSON', help='Load a previous configuration file')
@@ -1654,7 +1650,14 @@ def new_slm_window(app, args, settings=None):
     cwin = ControlWindow(slm)
     cwin.show()
 
-    if settings:
+    if args.slm_settings is not None and settings is not None:
+        raise RuntimeError('Both file and dict settings specified')
+
+    if args.slm_settings is not None:
+        d = json.loads(args.slm_settings.read())
+        args.slm_settings = args.slm_settings.name
+        cwin.load(d)
+    elif settings is not None:
         cwin.load(settings)
 
     return cwin
