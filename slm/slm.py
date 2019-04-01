@@ -1200,20 +1200,19 @@ def merge_pars(dp, up):
 
 
 def get_noll_indices(params):
-    p = params['control']
-    if 'Zernike' in p:
-        z = p['Zernike']
-        noll_min = z['min']
-        noll_max = z['max']
-        minclude = z['include']
-        mexclude = z['exclude']
-    else:
-        RuntimeError()
+    # TODO fixme
+    p = params['control']['SingleZernike']
 
-    mrange = np.arange(noll_min, noll_max + 1)
+    noll_min = p['min']
+    noll_max = p['max']
+    minclude = np.array(p['include'], dtype=np.int)
+    mexclude = np.array(p['exclude'], dtype=np.int)
+
+    mrange = np.arange(noll_min, noll_max + 1, dtype=np.int)
     zernike_indices = np.setdiff1d(
         np.union1d(np.unique(mrange), np.unique(minclude)),
         np.unique(mexclude))
+
     return zernike_indices
 
 
@@ -1233,6 +1232,9 @@ class SingleZernikeControl:
             indices = np.arange(1, nz + 1)
         else:
             indices = get_noll_indices(pars)
+            self.log.error('AAAAAAAAAAAA' + str(indices))
+
+        self.log.error('BBBBBBBBBBBBB' + str(indices))
         self.indices = indices
         ndof = indices.size
 
@@ -1593,7 +1595,19 @@ class ControlWindow(QDialog):
 
     def acquire_control(self, h5f):
         self.sig_acquire.emit((h5f,))
-        return SingleZernikeControl(self.slm, h5f=h5f)
+        pars = {
+            'control': {
+                'SingleZernike': {
+                    'include': [],
+                    'exclude': [1, 2, 3, 4],
+                    'min': 5,
+                    'max': 6,
+                    'all': 0,
+                    'pupil': 0,
+                    },
+                }
+            }
+        return SingleZernikeControl(self.slm, pars=pars, h5f=h5f)
 
     def release_control(self, control, h5f):
         self.sig_release.emit((control, h5f))
