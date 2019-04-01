@@ -987,8 +987,13 @@ class PupilPanel(QFrame):
                 assert(len(zernike_rows) == mynk)
 
         def reset_fun():
-            for t in zernike_rows:
-                t[2].setValue(0.0)
+            self.pupil.aberration[:] = 0
+            self.pupil.set_aberration(self.pupil.aberration)
+            self.phase_display.update_phase(
+                self.pupil.rzern.n, self.pupil.aberration)
+            self.phase_display.update()
+            update_zernike_rows(0)
+            update_zernike_rows()
 
         def change_radial():
             try:
