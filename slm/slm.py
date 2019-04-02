@@ -1437,7 +1437,7 @@ class ControlWindow(QDialog):
             def myf1():
                 fdiag, _ = QFileDialog.getOpenFileName()
                 if fdiag:
-                    slm.set_flat(fdiag)
+                    self.slm.set_flat(fdiag)
             return myf1
 
         g = QGroupBox('Flattening')
