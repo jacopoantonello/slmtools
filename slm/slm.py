@@ -1232,9 +1232,7 @@ class SingleZernikeControl:
             indices = np.arange(1, nz + 1)
         else:
             indices = get_noll_indices(pars)
-            self.log.error('AAAAAAAAAAAA' + str(indices))
 
-        self.log.error('BBBBBBBBBBBBB' + str(indices))
         self.indices = indices
         ndof = indices.size
 
