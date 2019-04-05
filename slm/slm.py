@@ -339,7 +339,7 @@ class SLM(QDialog):
         self.dict2parameters(d)
         self.refresh_hologram()
 
-    def save(self):
+    def save_parameters(self):
         return self.parameters2dict()
 
     def refresh_hologram(self):
@@ -1131,82 +1131,11 @@ class PupilPanel(QFrame):
         pass
 
 
-def get_default_parameters():
-    return {
-        'control': {
-            'SingleZernike': {
-                'include': [],
-                'exclude': [1, 2, 3, 4],
-                'min': 5,
-                'max': 6,
-                'all': 1,
-                'pupil': 0,
-                },
-            'DoubleZernike': {
-                'include': [],
-                'exclude': [1, 2, 3, 4],
-                'min': 5,
-                'max': 6,
-                'all': 1,
-                },
-            }
-        }
-
-
-def get_parameters_info():
-    return {
-        'control': {
-            'SingleZernike': {
-                'include': (list, int, 'Zernike indices to include'),
-                'exclude': (list, int, 'Zernike indices to include'),
-                'min': (int, (1, None), 'Minimum Zernike index'),
-                'max': (int, (1, None), 'Maximum Zernike index'),
-                'all': (
-                    int, (0, 1), 'Use all Zernike available in calibration'),
-                'pupil': (
-                    int, (1, 2), 'SLM pupil number'),
-                },
-            'DoubleZernike': {
-                'include': (list, int, 'Zernike indices to include'),
-                'exclude': (list, int, 'Zernike indices to include'),
-                'min': (int, (1, None), 'Minimum Zernike index'),
-                'max': (int, (1, None), 'Maximum Zernike index'),
-                'all': (
-                    int, (0, 1), 'Use all Zernike available in calibration'),
-                },
-            }
-        }
-
-
-def merge_pars(dp, up):
-    p = {}
-    for k, v in dp.items():
-        if type(v) == dict:
-            options = list(v.keys())
-            if k not in up:
-                p[k] = {options[0]: dp[k][options[0]]}
-            else:
-                choice = list(up[k].keys())
-                assert(len(choice) == 1)
-                choice = choice[0]
-                assert(choice in dp[k].keys())
-                p[k] = {choice: merge_pars(dp[k][choice], up[k][choice])}
-        else:
-            if k in up:
-                p[k] = up[k]
-            else:
-                p[k] = dp[k]
-    return p
-
-
 def get_noll_indices(params):
-    # TODO fixme
-    p = params['control']['SingleZernike']
-
-    noll_min = p['min']
-    noll_max = p['max']
-    minclude = np.array(p['include'], dtype=np.int)
-    mexclude = np.array(p['exclude'], dtype=np.int)
+    noll_min = params['min']
+    noll_max = params['max']
+    minclude = np.array(params['include'], dtype=np.int)
+    mexclude = np.array(params['exclude'], dtype=np.int)
 
     mrange = np.arange(noll_min, noll_max + 1, dtype=np.int)
     zernike_indices = np.setdiff1d(
@@ -1216,43 +1145,105 @@ def get_noll_indices(params):
     return zernike_indices
 
 
-class SingleZernikeControl:
+class DoubleZernike:
+
+    @staticmethod
+    def get_default_parameters():
+        return {
+            'include': [],
+            'exclude': [1, 2, 3, 4],
+            'min': 5,
+            'max': 6,
+            }
+
+    @staticmethod
+    def get_parameters_info():
+        return {
+            'include': (list, int, 'Zernike indices to include'),
+            'exclude': (list, int, 'Zernike indices to include'),
+            'min': (int, (1, None), 'Minimum Zernike index'),
+            'max': (int, (1, None), 'Maximum Zernike index'),
+            },
+
+    def __init__(self):
+        raise NotImplementedError()
+
+
+class SingleZernike:
+
+    @staticmethod
+    def get_default_parameters():
+        return {
+            'include': [],
+            'exclude': [1, 2, 3, 4],
+            'min': 5,
+            'max': 6,
+            'pupil_index': 0,
+            'flipx': 0,
+            'flipy': 0,
+            'rotate': 0.0,
+            }
+
+    @staticmethod
+    def get_parameters_info():
+        return {
+            'include': (list, int, 'Zernike indices to include'),
+            'exclude': (list, int, 'Zernike indices to include'),
+            'min': (int, (1, None), 'Minimum Zernike index'),
+            'max': (int, (1, None), 'Maximum Zernike index'),
+            'pupil_index': (int, (0, None), 'SLM pupil number'),
+            'flipx': (int, (0, 1), 'Flip pupil along x'),
+            'flipy': (int, (0, 1), 'Flip pupil along y'),
+            'rotate': (float, (None, None), 'Rotate pupil in degrees'),
+            }
 
     def __init__(self, slm, pars={}, h5f=None):
-        pars = merge_pars(get_default_parameters(), pars)
-        self.pars = pars
         self.log = logging.getLogger(self.__class__.__name__)
+        pars = {**self.get_default_parameters(), **pars}
+        self.pars = pars
         self.slm = slm
-        self.pupil_index = pars['control']['SingleZernike']['pupil']
-        self.pupil = self.slm.pupils[self.pupil_index]
 
-        nz = self.pupil.aberration.size
+        self.indices = get_noll_indices(pars)
+        self.ndof = self.indices.size
 
-        if pars['control']['SingleZernike']['all'] == 1:
-            indices = np.arange(1, nz + 1)
-        else:
-            indices = get_noll_indices(pars)
+        z0 = self.pupil.aberration.flatten()
+        if (self.indices - 1).max() >= self.pupil.aberration.size:
+            z1 = z0
+            z0 = np.zeros(self.indices.max())
+            z0[:z1.size] = z1
+            self.pupil.set_aberration(z1.reshape(-1, 1))
+        self.z0 = z0
 
-        self.indices = indices
-        ndof = indices.size
-
-        self.ndof = ndof
         self.h5f = h5f
-        self.z0 = self.pupil.aberration.ravel()
 
-        self.h5_save('slm', json.dumps(self.slm.save()))
+        self.h5_save('slm', json.dumps(self.slm.save_parameters()))
         self.h5_save('indices', self.indices)
         self.h5_save('flat', self.slm.flat)
         self.h5_save('z0', self.z0)
         self.P = None
 
-        if h5f:
-            self.h5_make_empty('flat_on', (1,), np.bool)
-            self.h5_make_empty('x', (ndof,))
-            self.h5_make_empty('z2', (self.z0.size,))
+        # handle orthogonal pupil transform
+        try:
+            self.transform_pupil(pars['rotate'], pars['flipx'], pars['flipy'])
+        except Exception:
+            self.P = None
+            self.pars['flipx'] = 0
+            self.pars['flipy'] = 0
+            self.pars['rotate'] = 0.0
 
+        self.ab = np.zeros((self.ndof,))
+
+        self.h5_make_empty('x', (self.ndof,))
+        self.h5_make_empty('z2', (self.z0.size,))
         self.h5_save('name', self.__class__.__name__)
-        self.h5_save('P', np.eye(nz))
+        self.h5_save('ab', self.ab)
+        self.h5_save('P', np.eye(self.z0.size))
+        self.h5_save('params', json.dumps(pars))
+
+    def save_parameters(self, merge={}):
+        d = {**merge, **self.pars}
+        d['slm'] = slm.save_parameters()
+        return d
 
     def h5_make_empty(self, name, shape, dtype=np.float):
         if self.h5f:
@@ -1278,18 +1269,91 @@ class SingleZernikeControl:
             self.h5f[name] = what
 
     def write(self, x):
+        "Write Zernike coefficients"
         assert(x.size == self.ndof)
-        z1 = np.zeros(self.pupil.aberration.size)
-        z1[self.indices - 1] = x[:]
-        if self.P is not None:
-            z2 = np.dot(self.P, z1 + self.z0)
-        else:
-            z2 = z1 + self.z0
-        self.pupil.set_aberration(z2.reshape(-1, 1))
 
-        self.h5_append('flat_on', bool(self.slm.flat_on))
+        z1 = np.zeros(self.pupil.aberration.size)
+
+        # z controlled Zernike degrees of freedom
+        z1[self.indices - 1] = x[:]
+
+        # z1 transform all Zernike coefficients
+        if self.P is not None:
+            z1 = np.dot(self.P, z1)
+
+        # add initial state
+        z2 = self.z0 + z1
+
+        # logging
         self.h5_append('x', x)
         self.h5_append('z2', z2)
+
+        # write pupil
+        self.pupil.set_aberration(z2.reshape(-1, 1))
+
+    def set_random_ab(self, rms=1.0):
+        raise NotImplementedError()
+
+    def transform_pupil(self, alpha=0., flipx=False, flipy=False):
+        rzern = self.calib.get_rzern()
+
+        if alpha != 0.:
+            R = rzern.make_rotation(alpha)
+        else:
+            R = 1
+
+        if flipx:
+            Fx = rzern.make_xflip()
+        else:
+            Fx = 1
+
+        if flipy:
+            Fy = rzern.make_yflip()
+        else:
+            Fy = 1
+
+        tot = np.dot(Fy, np.dot(Fx, R))
+        if tot.size == 1:
+            return
+        else:
+            self.set_P(tot)
+
+    def set_P(self, P):
+        if P is None:
+            self.P = None
+
+            if self.h5f:
+                del self.h5f['P']
+                self.h5f['P'][:] = np.eye(self.nz)
+        else:
+            assert(P.ndim == 2)
+            assert(P.shape[0] == P.shape[1])
+            assert(np.allclose(np.dot(P, P.T), np.eye(P.shape[0])))
+            if self.P is None:
+                self.P = P.copy()
+            else:
+                np.dot(P, self.P.copy(), self.P)
+
+            if self.h5f:
+                del self.h5f['P']
+                self.h5f['P'][:] = self.P[:]
+
+
+class SLMControl:
+
+    @staticmethod
+    def get_default_parameters():
+        return {
+            'SingleZernike': SingleZernike.get_default_parameters(),
+            # 'DoubleZernike': DoubleZernike.get_default_parameters(),
+            }
+
+    @staticmethod
+    def get_parameters_info():
+        return {
+            'SingleZernike': SingleZernike.get_parameters_info(),
+            # 'DoubleZernike': DoubleZernike.get_parameters_info(),
+            }
 
 
 class ControlWindow(QDialog):
@@ -1394,7 +1458,7 @@ class ControlWindow(QDialog):
                 if fdiag:
                     try:
                         with open(fdiag, 'w') as f:
-                            json.dump(self.save(), f)
+                            json.dump(self.save_parameters(), f)
                     except Exception as e:
                         QMessageBox.information(self, 'Error', str(e))
             return myf1
@@ -1420,14 +1484,14 @@ class ControlWindow(QDialog):
         for f in self.refresh_gui:
             f()
 
-    def save(self):
+    def save_parameters(self):
         curg = self.geometry()
         return {
             'controlwindow': {
                 'geometry': [
                     curg.x(), curg.y(), curg.width(), curg.height()],
                 },
-            'slm': self.slm.save(),
+            'slm': self.slm.save_parameters(),
             }
 
     def make_flat_tab(self):
