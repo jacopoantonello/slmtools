@@ -1859,8 +1859,12 @@ class ControlWindow(QDialog):
     def acquire_control(self, h5f):
         self.sig_acquire.emit((h5f,))
 
-        cname, pars = self.control_options.get_options()
-        return SLMControls.new_control(self.slm, cname, pars, h5f)
+        try:
+            cname, pars = self.control_options.get_options()
+            c = SLMControls.new_control(self.slm, cname, pars, h5f)
+        except Exception:
+            self.sig_release.emit((h5f,))
+        return c
 
     def release_control(self, control, h5f):
         self.sig_release.emit((control, h5f))
