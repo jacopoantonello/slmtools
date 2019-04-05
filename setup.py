@@ -71,6 +71,6 @@ setup(
             'or later (GPLv3+)'),
         'Programming Language :: Python :: 3',
     ],
-    requires=['numpy', 'matplotlib', 'PyQt5'],
+    requires=['numpy', 'matplotlib', 'PyQt5', 'zernike'],
     packages=['slm', 'slm.ext'],
 )

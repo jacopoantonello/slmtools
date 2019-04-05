@@ -1568,6 +1568,7 @@ class ControlWindow(QDialog):
         holo_lay.addWidget(file1, 2, 0, 1, 3)
 
         tabs = QTabWidget()
+        self.tabs = tabs
 
         front = QSplitter(Qt.Vertical)
         front.addWidget(disp)
@@ -1591,7 +1592,10 @@ class ControlWindow(QDialog):
                         f()
                 for f in self.refresh_gui:
                     f()
-                self.setEnabled(True)
+                for i in range(self.pupilsTab.count()):
+                    self.pupilsTab.widget(i).setEnabled(True)
+                for i in range(self.tabs.count()):
+                    self.tabs.widget(i).setEnabled(True)
                 self.can_close = True
                 self.mutex.unlock()
             return f
@@ -1600,7 +1604,10 @@ class ControlWindow(QDialog):
             def f(t):
                 self.mutex.lock()
                 self.can_close = False
-                self.setEnabled(False)
+                for i in range(self.pupilsTab.count()):
+                    self.pupilsTab.widget(i).setEnabled(False)
+                for i in range(self.tabs.count()):
+                    self.tabs.widget(i).setEnabled(False)
             return f
 
         self.sig_release.connect(make_release_hand())
