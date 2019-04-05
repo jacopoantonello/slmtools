@@ -56,7 +56,7 @@ class MyQIntValidator(QIntValidator):
 
 class Pupil():
 
-    def __init__(self, holo, settings=None):
+    def __init__(self, holo, pars=None):
         self.xv = None
         self.yv = None
         self.name = None
@@ -76,8 +76,8 @@ class Pupil():
         self.holo = holo
         self.name = f'pupil {len(self.holo.pupils)}'
 
-        if settings:
-            self.dict2parameters(settings)
+        if pars:
+            self.dict2parameters(pars)
 
     def parameters2dict(self):
         return {
@@ -270,7 +270,7 @@ class SLM(QDialog):
 
     refreshHologramSignal = pyqtSignal()
 
-    def __init__(self, settings={}):
+    def __init__(self, pars={}):
         super().__init__(
             parent=None,
             flags=Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
@@ -288,8 +288,8 @@ class SLM(QDialog):
         self.qim = None
         self.wrap_value = 0xff
 
-        if settings:
-            self.dict2parameters(settings)
+        if pars:
+            self.dict2parameters(pars)
 
         if len(self.pupils) == 0:
             self.pupils.append(Pupil(self))
@@ -577,7 +577,7 @@ class PupilPanel(QFrame):
         """Subclass for a control GUI.
         Parameters:
             slm: SLM instance
-            settings: dict, saved settings
+            pars: dict, saved pars
             is_parent: bool. Useful in the case of doublepass to determine
                 for instance which widget determines the overall geometry"""
         super().__init__(parent)
@@ -601,7 +601,6 @@ class PupilPanel(QFrame):
         top.addWidget(self.group_3d, 3, 1)
         top.addWidget(self.group_aberration, 4, 0, 2, 2)
         self.setLayout(top)
-        self.top = top
 
         self.pindex = self.ptabs.count()
         self.ptabs.addTab(self, self.pupil.name)
@@ -1371,12 +1370,153 @@ class SLMControls:
         return options[name](slm, pars, h5f)
 
 
+class OptionsPanel(QFrame):
+
+    def setup(self, pars, name, defaultd, infod):
+        self.lines = []
+        self.pars = pars
+        self.name = name
+        self.defaultd = defaultd
+        self.infod = infod
+
+        layout = QGridLayout()
+        self.setLayout(layout)
+
+        combo = QComboBox()
+        for k in defaultd.keys():
+            combo.addItem(k)
+        layout.addWidget(combo, 0, 0)
+        combo.setCurrentIndex(0)
+        self.combo = combo
+
+        scroll = QScrollArea()
+        scroll.setWidget(QWidget())
+        scroll.setWidgetResizable(True)
+        lay = QGridLayout(scroll.widget())
+        self.scroll = scroll
+        self.lay = lay
+
+        layout.addWidget(scroll, 1, 0)
+        addr_options = name + '_options'
+        addr_selection = name + '_name'
+        self.addr_options = addr_options
+        self.addr_selection = addr_selection
+
+        self.selection = combo.currentText()
+        if addr_options not in self.pars:
+            self.pars[addr_options] = defaultd
+        if addr_selection not in self.pars:
+            self.pars[addr_selection] = self.selection
+
+        self.from_dict(
+            self.selection,
+            self.infod[self.selection],
+            self.pars[self.addr_options][self.selection])
+
+        def f():
+            def f(selection):
+                self.clear_all()
+                self.from_dict(
+                    selection,
+                    self.infod[selection],
+                    self.pars[self.addr_options][selection])
+                self.selection = selection
+            return f
+
+        combo.currentTextChanged.connect(f())
+
+    def get_options(self):
+        return (
+            self.selection,
+            dict(self.pars[self.addr_options][self.selection])
+            )
+
+    def from_dict(self, selection, infod, valuesd):
+        count = 0
+        for k, v in infod.items():
+            lab = QLabel(k)
+
+            type1 = v[0]
+            bounds = v[1]
+            desc = v[2]
+
+            lab.setToolTip(desc)
+            self.lay.addWidget(lab, count, 0)
+
+            def fle(k, le, val, type1):
+                def f():
+                    newval = type1(le.text())
+                    self.pars[
+                        self.addr_options][selection][k] = type1(le.text())
+                    val.setFixup(newval)
+                return f
+
+            def ledisc(w, hand):
+                def f():
+                    w.editingFinished.disconnect(hand)
+                return f
+
+            curval = valuesd[k]
+            if type1 in (int, float):
+                le = QLineEdit(str(curval))
+                le.setToolTip(desc)
+                if type1 == int:
+                    vv = MyQIntValidator()
+                else:
+                    vv = MyQDoubleValidator()
+                vv.setFixup(curval)
+                if bounds[0] is not None:
+                    vv.setBottom(bounds[0])
+                if bounds[1] is not None:
+                    vv.setTop(bounds[1])
+                le.setValidator(vv)
+                hand = fle(k, le, vv, type1)
+                le.editingFinished.connect(hand)
+                disc = ledisc(le, hand)
+            elif type1 == list:
+                le = QLineEdit(', '.join([str(c) for c in curval]))
+                le.setToolTip(desc)
+
+                def make_validator(k, le, type1, bounds):
+                    def f():
+                        try:
+                            tmp = [bounds(s) for s in le.text().split(',')]
+                            self.pars[self.addr_options][selection][k] = tmp
+                        except Exception:
+                            le.blockSignals(True)
+                            le.setText(
+                                ', '.join([
+                                    str(c) for c in
+                                    self.pars[self.addr_options][selection][k]
+                                    ]))
+                            le.blockSignals(False)
+                    return f
+
+                hand = make_validator(k, le, type1, bounds)
+                le.editingFinished.connect(hand)
+                disc = ledisc(le, hand)
+            else:
+                raise RuntimeError()
+
+            self.lay.addWidget(le, count, 1)
+            self.lines.append(((le, lab), disc))
+            count += 1
+
+    def clear_all(self):
+        for l in self.lines:
+            for w in l[0]:
+                self.lay.removeWidget(w)
+                w.setParent(None)
+            l[1]()
+        self.lines.clear()
+
+
 class ControlWindow(QDialog):
 
     sig_acquire = pyqtSignal(tuple)
     sig_release = pyqtSignal(tuple)
 
-    def __init__(self, slm, settings={}):
+    def __init__(self, slm, pars={}):
         super().__init__(parent=None)
         self.pupilPanels = []
         self.refresh_gui = []
@@ -1384,32 +1524,43 @@ class ControlWindow(QDialog):
         self.close_slm = True
 
         self.slm = slm
-        self.settings = settings
+        self.pars = pars
         self.mutex = QMutex()
 
         self.setWindowTitle(
             'SLM ' + version.__version__ + ' ' + version.__date__)
         QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
 
-        if 'controlwindow' in settings.keys():
+        if 'controlwindow' in pars.keys():
             self.setGeometry(
-                settings['controlwindow'][0], settings['controlwindow'][1],
-                settings['controlwindow'][2], settings['controlwindow'][3])
+                pars['controlwindow'][0], pars['controlwindow'][1],
+                pars['controlwindow'][2], pars['controlwindow'][3])
 
         self.pupilsTab = QTabWidget()
         for p in self.slm.pupils:
             pp = PupilPanel(p, self.pupilsTab)
             self.pupilPanels.append(pp)
 
+        self.slm_layout = QGridLayout()
+
         self.make_geometry_tab()
         self.make_general_display()
-        self.make_parameters_group()
+        self.make_parameters_group(self.slm_layout)
 
-        self.top = QGridLayout()
-        self.top.addWidget(self.display, 0, 0)
-        self.top.addWidget(self.pupilsTab, 0, 1, 2, 1)
-        self.top.addWidget(self.parametersGroup, 1, 0)
-        self.setLayout(self.top)
+        self.slm_layout.addWidget(self.display, 0, 0)
+        self.slm_layout.addWidget(self.pupilsTab, 0, 1, 2, 1)
+        self.slm_layout.addWidget(self.parametersGroup, 1, 0)
+
+        self.tabs = QTabWidget()
+
+        slm_frame = QFrame()
+        slm_frame.setLayout(self.slm_layout)
+        self.tabs.addTab(slm_frame, 'SLM')
+        self.make_control_tab()
+
+        main_layout = QGridLayout()
+        main_layout.addWidget(self.tabs)
+        self.setLayout(main_layout)
 
         def make_release_hand():
             def f(t):
@@ -1433,6 +1584,15 @@ class ControlWindow(QDialog):
         self.sig_release.connect(make_release_hand())
         self.sig_acquire.connect(make_acquire_hand())
         self.slm.refresh_hologram()
+
+    def make_control_tab(self):
+        control_options = OptionsPanel()
+        control_options.setup(
+            self.pars, 'control',
+            SLMControls.get_default_parameters(),
+            SLMControls.get_parameters_info())
+        self.control_options = control_options
+        self.tabs.addTab(control_options, 'control')
 
     @staticmethod
     def helper_boolupdate(mycallback, myupdate):
@@ -1619,7 +1779,7 @@ class ControlWindow(QDialog):
 
         self.refresh_gui.append(f())
 
-    def make_parameters_group(self):
+    def make_parameters_group(self, slm_layout):
         self.make_file_tab()
         self.make_flat_tab()
         self.make_wrap_tab()
@@ -1630,17 +1790,17 @@ class ControlWindow(QDialog):
         bmin = QPushButton('- pupil')
 
         group = QGroupBox("Parameters")
-        top = QGridLayout()
-        top.addWidget(self.group_geometry, 0, 0, 1, 3)
+        slm_layout = QGridLayout()
+        slm_layout.addWidget(self.group_geometry, 0, 0, 1, 3)
 
-        top.addWidget(self.group_flat, 1, 0)
-        top.addWidget(self.group_wrap, 1, 1)
-        top.addWidget(self.doubleFlatOnCheckBox, 1, 2)
-        top.addWidget(bmin, 2, 0)
-        top.addWidget(bpls, 2, 1)
+        slm_layout.addWidget(self.group_flat, 1, 0)
+        slm_layout.addWidget(self.group_wrap, 1, 1)
+        slm_layout.addWidget(self.doubleFlatOnCheckBox, 1, 2)
+        slm_layout.addWidget(bmin, 2, 0)
+        slm_layout.addWidget(bpls, 2, 1)
 
-        top.addWidget(self.group_file, 3, 0, 1, 3)
-        group.setLayout(top)
+        slm_layout.addWidget(self.group_file, 3, 0, 1, 3)
+        group.setLayout(slm_layout)
         self.parametersGroup = group
 
         def fp():
@@ -1735,26 +1895,26 @@ class Console(QDialog):
 
 def add_arguments(parser):
     parser.add_argument(
-        '--slm-settings', type=argparse.FileType('r'), default=None,
+        '--slm-parameters', type=argparse.FileType('r'), default=None,
         metavar='JSON', help='Load a previous configuration file')
 
 
-def new_slm_window(app, args, settings=None):
+def new_slm_window(app, args, pars=None):
     slm = SLM()
     slm.show()
 
     cwin = ControlWindow(slm)
     cwin.show()
 
-    if args.slm_settings is not None and settings is not None:
-        raise RuntimeError('Both file and dict settings specified')
+    if args.slm_parameters is not None and pars is not None:
+        raise RuntimeError('Both file and dict parameters specified')
 
-    if args.slm_settings is not None:
-        d = json.loads(args.slm_settings.read())
-        args.slm_settings = args.slm_settings.name
+    if args.slm_parameters is not None:
+        d = json.loads(args.slm_parameters.read())
+        args.slm_parameters = args.slm_parameters.name
         cwin.load(d)
-    elif settings is not None:
-        cwin.load(settings)
+    elif pars is not None:
+        cwin.load(pars)
 
     return cwin
 
