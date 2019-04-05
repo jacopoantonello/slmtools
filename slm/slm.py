@@ -1196,6 +1196,12 @@ class SingleZernike:
             'rotate': (float, (None, None), 'Rotate pupil in degrees'),
             }
 
+    def __str__(self):
+        return (
+            f'<slm.{self.__class__.__name__} ' +
+            f'pupil={str(self.pars["pupil_index"])} ' +
+            f'ndof={self.ndof} indices={self.indices}>')
+
     def __init__(self, slm, pars={}, h5f=None):
         self.log = logging.getLogger(self.__class__.__name__)
         pars = {**self.get_default_parameters(), **pars}
@@ -1207,7 +1213,10 @@ class SingleZernike:
         self.ndof = self.indices.size
 
         z0 = self.pupil.aberration.flatten()
-        if (self.indices - 1).max() >= self.pupil.aberration.size:
+        self.log.info(f'indices {self.indices} ndof {self.ndof}')
+        if (
+                self.ndof > 0 and
+                (self.indices - 1).max() >= self.pupil.aberration.size):
             z1 = z0
             z0 = np.zeros(self.indices.max())
             z0[:z1.size] = z1
@@ -1597,6 +1606,11 @@ class ControlWindow(QDialog):
         self.sig_release.connect(make_release_hand())
         self.sig_acquire.connect(make_acquire_hand())
         self.slm.refresh_hologram()
+
+    def __str__(self):
+        return (
+            f'<slm.{self.__class__.__name__} ' +
+            f'pupils={str(len(self.slm.pupils))}>')
 
     def make_control_options(self):
         control_options = OptionsPanel()
