@@ -20,7 +20,7 @@ from PyQt5.QtWidgets import (
     QDialog, QLabel, QLineEdit, QPushButton, QComboBox, QGroupBox,
     QGridLayout, QCheckBox, QVBoxLayout, QApplication, QShortcut,
     QSlider, QDoubleSpinBox, QWidget, QFileDialog, QScrollArea,
-    QMessageBox, QTabWidget, QFrame,
+    QMessageBox, QTabWidget, QFrame, QSplitter,
     )
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
@@ -1541,26 +1541,38 @@ class ControlWindow(QDialog):
             pp = PupilPanel(p, self.pupilsTab)
             self.pupilPanels.append(pp)
 
-        self.slm_layout = QGridLayout()
+        geom = self.make_geometry()
+        disp = self.make_general_display()
+        file1 = self.make_file_tab()
+        flat = self.make_flat_tab()
+        wrap = self.make_wrap_tab()
+        pups = self.make_pupils_group()
 
-        self.make_geometry_tab()
-        self.make_general_display()
-        self.make_parameters_group(self.slm_layout)
+        holo = QFrame()
+        holo_lay = QGridLayout()
+        holo.setLayout(holo_lay)
+        holo_lay.addWidget(geom, 0, 0)
+        holo_lay.addWidget(flat, 0, 1)
+        holo_lay.addWidget(wrap, 0, 2)
+        holo_lay.addWidget(pups, 1, 0)
+        holo_lay.addWidget(file1, 2, 0, 1, 3)
 
-        self.slm_layout.addWidget(self.display, 0, 0)
-        self.slm_layout.addWidget(self.pupilsTab, 0, 1, 2, 1)
-        self.slm_layout.addWidget(self.parametersGroup, 1, 0)
+        tabs = QTabWidget()
 
-        self.tabs = QTabWidget()
+        front = QSplitter(Qt.Vertical)
+        front.addWidget(disp)
+        front.addWidget(holo)
+        self.make_control_options()
+        tabs.addTab(front, 'SLM')
+        tabs.addTab(self.control_options, 'control')
 
-        slm_frame = QFrame()
-        slm_frame.setLayout(self.slm_layout)
-        self.tabs.addTab(slm_frame, 'SLM')
-        self.make_control_tab()
+        horiz = QSplitter(Qt.Horizontal)
+        horiz.addWidget(tabs)
+        horiz.addWidget(self.pupilsTab)
 
-        main_layout = QGridLayout()
-        main_layout.addWidget(self.tabs)
-        self.setLayout(main_layout)
+        lay = QGridLayout()
+        self.setLayout(lay)
+        lay.addWidget(horiz)
 
         def make_release_hand():
             def f(t):
@@ -1585,14 +1597,13 @@ class ControlWindow(QDialog):
         self.sig_acquire.connect(make_acquire_hand())
         self.slm.refresh_hologram()
 
-    def make_control_tab(self):
+    def make_control_options(self):
         control_options = OptionsPanel()
         control_options.setup(
             self.pars, 'control',
             SLMControls.get_default_parameters(),
             SLMControls.get_parameters_info())
         self.control_options = control_options
-        self.tabs.addTab(control_options, 'control')
 
     @staticmethod
     def helper_boolupdate(mycallback, myupdate):
@@ -1602,8 +1613,9 @@ class ControlWindow(QDialog):
         return f
 
     def make_general_display(self):
-        self.display = MatplotlibWindow(self.slm, figsize=(8, 6))
-        self.slm.refreshHologramSignal.connect(self.display.update_array)
+        display = MatplotlibWindow(self.slm, figsize=(8, 6))
+        self.slm.refreshHologramSignal.connect(display.update_array)
+        return display
 
     def make_file_tab(self):
         """Rewriting the file tab to facilitate loading of 2-pupil files"""
@@ -1640,8 +1652,7 @@ class ControlWindow(QDialog):
 
         load.clicked.connect(helper_load())
         save.clicked.connect(helper_save())
-
-        self.group_file = g
+        return g
 
     def load(self, d):
         self.setGeometry(*d['controlwindow']['geometry'])
@@ -1679,7 +1690,7 @@ class ControlWindow(QDialog):
 
         g = QGroupBox('Flattening')
         l1 = QGridLayout()
-        cboxlf = QCheckBox('flat on')
+        cboxlf = QCheckBox('on')
         cboxlf.toggled.connect(self.helper_boolupdate(
             self.slm.set_flat_on, self.slm.update))
         cboxlf.setChecked(self.slm.flat_on)
@@ -1688,7 +1699,6 @@ class ControlWindow(QDialog):
         loadbut.clicked.connect(helper_load_flat1())
         l1.addWidget(loadbut, 0, 1)
         g.setLayout(l1)
-        self.group_flat = g
 
         def f():
             def f():
@@ -1696,8 +1706,9 @@ class ControlWindow(QDialog):
             return f
 
         self.refresh_gui.append(f())
+        return g
 
-    def make_geometry_tab(self):
+    def make_geometry(self):
         def handle_geometry(ind, le):
             def f():
                 try:
@@ -1744,7 +1755,7 @@ class ControlWindow(QDialog):
 
         self.refresh_gui.append(f())
         group.setLayout(l1)
-        self.group_geometry = group
+        return group
 
     def make_wrap_tab(self):
         g = QGroupBox('Wrap value')
@@ -1770,7 +1781,6 @@ class ControlWindow(QDialog):
         lewrap.editingFinished.connect(handle_wrap(lewrap))
         l1.addWidget(lewrap, 0, 0)
         g.setLayout(l1)
-        self.group_wrap = g
 
         def f():
             def f():
@@ -1778,30 +1788,21 @@ class ControlWindow(QDialog):
             return f
 
         self.refresh_gui.append(f())
+        return g
 
-    def make_parameters_group(self, slm_layout):
-        self.make_file_tab()
-        self.make_flat_tab()
-        self.make_wrap_tab()
-        self.doubleFlatOnCheckBox = QCheckBox("Double flat on")
+    def make_pupils_group(self):
+        g = QGroupBox('Pupils')
+        l1 = QGridLayout()
+
+        self.doubleFlatOnCheckBox = QCheckBox("Double flat")
         self.doubleFlatOnCheckBox.setChecked(self.slm.double_flat_on)
         self.doubleFlatOnCheckBox.toggled.connect(self.slm.set_double_flat_on)
-        bpls = QPushButton('+ pupil')
-        bmin = QPushButton('- pupil')
+        bpls = QPushButton('+')
+        bmin = QPushButton('-')
 
-        group = QGroupBox("Parameters")
-        slm_layout = QGridLayout()
-        slm_layout.addWidget(self.group_geometry, 0, 0, 1, 3)
-
-        slm_layout.addWidget(self.group_flat, 1, 0)
-        slm_layout.addWidget(self.group_wrap, 1, 1)
-        slm_layout.addWidget(self.doubleFlatOnCheckBox, 1, 2)
-        slm_layout.addWidget(bmin, 2, 0)
-        slm_layout.addWidget(bpls, 2, 1)
-
-        slm_layout.addWidget(self.group_file, 3, 0, 1, 3)
-        group.setLayout(slm_layout)
-        self.parametersGroup = group
+        l1.addWidget(bmin, 0, 0)
+        l1.addWidget(bpls, 0, 1)
+        l1.addWidget(self.doubleFlatOnCheckBox, 0, 2)
 
         def fp():
             def f():
@@ -1821,6 +1822,9 @@ class ControlWindow(QDialog):
 
         bpls.clicked.connect(fp())
         bmin.clicked.connect(fm())
+
+        g.setLayout(l1)
+        return g
 
     def closeEvent(self, event):
         if self.can_close:
