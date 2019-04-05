@@ -31,7 +31,7 @@ from qtconsole.rich_jupyter_widget import RichJupyterWidget
 from qtconsole.inprocess import QtInProcessKernelManager
 
 from slm import version
-from slm.ext.czernike import RZern
+from zernike.czernike import RZern
 
 
 """SLM - spatial light modulator (SLM) controller.
@@ -1339,7 +1339,7 @@ class SingleZernike:
                 self.h5f['P'][:] = self.P[:]
 
 
-class SLMControl:
+class SLMControls:
 
     @staticmethod
     def get_default_parameters():
@@ -1354,6 +1354,21 @@ class SLMControl:
             'SingleZernike': SingleZernike.get_parameters_info(),
             # 'DoubleZernike': DoubleZernike.get_parameters_info(),
             }
+
+    @staticmethod
+    def get_controls():
+        return {
+            'SingleZernike': SingleZernike,
+        }
+
+    @staticmethod
+    def new_control(slm, name, pars={}, h5f=None):
+        options = SLMControls.get_controls()
+        if name not in options.keys():
+            raise ValueError(
+                f'name must be one of {", ".join(options.keys())}')
+
+        return options[name](slm, pars, h5f)
 
 
 class ControlWindow(QDialog):
