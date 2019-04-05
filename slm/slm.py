@@ -1862,8 +1862,9 @@ class ControlWindow(QDialog):
         try:
             cname, pars = self.control_options.get_options()
             c = SLMControls.new_control(self.slm, cname, pars, h5f)
-        except Exception:
-            self.sig_release.emit((h5f,))
+        except Exception as ex:
+            self.sig_release.emit((None, h5f))
+            raise ex
         return c
 
     def release_control(self, control, h5f):
