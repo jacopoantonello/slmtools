@@ -1201,6 +1201,7 @@ class SingleZernike:
         pars = {**self.get_default_parameters(), **pars}
         self.pars = pars
         self.slm = slm
+        self.pupil = slm.pupils[pars['pupil_index']]
 
         self.indices = get_noll_indices(pars)
         self.ndof = self.indices.size
@@ -1836,19 +1837,9 @@ class ControlWindow(QDialog):
 
     def acquire_control(self, h5f):
         self.sig_acquire.emit((h5f,))
-        pars = {
-            'control': {
-                'SingleZernike': {
-                    'include': [],
-                    'exclude': [1, 2, 3, 4],
-                    'min': 5,
-                    'max': 6,
-                    'all': 0,
-                    'pupil': 0,
-                    },
-                }
-            }
-        return SingleZernikeControl(self.slm, pars=pars, h5f=h5f)
+
+        cname, pars = self.control_options.get_options()
+        return SLMControls.new_control(self.slm, cname, self.pars, h5f)
 
     def release_control(self, control, h5f):
         self.sig_release.emit((control, h5f))
