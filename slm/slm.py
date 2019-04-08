@@ -1254,7 +1254,7 @@ class SingleZernike:
 
     def save_parameters(self, merge={}):
         d = {**merge, **self.pars}
-        d['slm'] = slm.save_parameters()
+        d['slm'] = self.slm.save_parameters()
         return d
 
     def h5_make_empty(self, name, shape, dtype=np.float):
