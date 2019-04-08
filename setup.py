@@ -72,5 +72,5 @@ setup(
         'Programming Language :: Python :: 3',
     ],
     requires=['numpy', 'matplotlib', 'PyQt5', 'zernike'],
-    packages=['slm', 'slm.ext'],
+    packages=['slm'],
 )
