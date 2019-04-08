@@ -1144,6 +1144,9 @@ def get_noll_indices(params):
     return zernike_indices
 
 
+h5_prefix = 'slm/'
+
+
 class DoubleZernike:
 
     @staticmethod
@@ -1256,7 +1259,7 @@ class SingleZernike:
 
     def h5_make_empty(self, name, shape, dtype=np.float):
         if self.h5f:
-            name = self.__class__.__name__ + '/' + name
+            name = h5_prefix + self.__class__.__name__ + '/' + name
             if name in self.h5f:
                 del self.h5f[name]
             self.h5f.create_dataset(
@@ -1265,14 +1268,14 @@ class SingleZernike:
 
     def h5_append(self, name, what):
         if self.h5f:
-            name = self.__class__.__name__ + '/' + name
+            name = h5_prefix + self.__class__.__name__ + '/' + name
             self.h5f[name].resize((
                 self.h5f[name].shape[0], self.h5f[name].shape[1] + 1))
             self.h5f[name][:, -1] = what
 
     def h5_save(self, where, what):
         if self.h5f:
-            name = self.__class__.__name__ + '/' + where
+            name = h5_prefix + self.__class__.__name__ + '/' + where
             if name in self.h5f:
                 del self.h5f[name]
             self.h5f[name] = what
@@ -1328,12 +1331,13 @@ class SingleZernike:
             self.set_P(tot)
 
     def set_P(self, P):
+        addr = h5_prefix + self.__class__.__name__ + '/P'
         if P is None:
             self.P = None
 
             if self.h5f:
-                del self.h5f['P']
-                self.h5f['P'][:] = np.eye(self.nz)
+                del self.h5f[addr]
+                self.h5f[addr][:] = np.eye(self.nz)
         else:
             assert(P.ndim == 2)
             assert(P.shape[0] == P.shape[1])
@@ -1344,8 +1348,8 @@ class SingleZernike:
                 np.dot(P, self.P.copy(), self.P)
 
             if self.h5f:
-                del self.h5f['P']
-                self.h5f['P'][:] = self.P[:]
+                del self.h5f[addr]
+                self.h5f[addr][:] = self.P[:]
 
 
 class SLMControls:
