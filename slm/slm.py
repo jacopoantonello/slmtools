@@ -275,6 +275,8 @@ class SLM(QDialog):
             parent=None,
             flags=Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
 
+        self.setWindowTitle('SLM Hologram')
+
         self.hologram_geometry = [0, 0, 400, 200]
         self.pupils = []
 
@@ -1541,8 +1543,7 @@ class ControlWindow(QDialog):
         self.pars = pars
         self.mutex = QMutex()
 
-        self.setWindowTitle(
-            'SLM ' + version.__version__ + ' ' + version.__date__)
+        self.setWindowTitle('SLM Control' + version.__version__)
         QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
 
         if 'controlwindow' in pars.keys():
