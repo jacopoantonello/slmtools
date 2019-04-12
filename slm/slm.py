@@ -1149,7 +1149,7 @@ def get_noll_indices(params):
 h5_prefix = 'slm/'
 
 
-class DoubleZernike:
+class Zernike2Control:
 
     @staticmethod
     def get_default_parameters():
@@ -1173,7 +1173,7 @@ class DoubleZernike:
         raise NotImplementedError()
 
 
-class SingleZernike:
+class Zernike1Control:
 
     @staticmethod
     def get_default_parameters():
@@ -1354,7 +1354,7 @@ class SingleZernike:
                 self.h5f[addr][:] = self.P[:]
 
 
-class MaskAlignment:
+class PupilPositionControl:
 
     @staticmethod
     def get_default_parameters():
@@ -1480,24 +1480,25 @@ class SLMControls:
     @staticmethod
     def get_default_parameters():
         return {
-            'SingleZernike': SingleZernike.get_default_parameters(),
-            'MaskAlignment': MaskAlignment.get_default_parameters(),
-            # 'DoubleZernike': DoubleZernike.get_default_parameters(),
+            'Zernike1Control': Zernike1Control.get_default_parameters(),
+            'PupilPositionControl':
+                PupilPositionControl.get_default_parameters(),
+            # 'Zernike2Control': Zernike2Control.get_default_parameters(),
             }
 
     @staticmethod
     def get_parameters_info():
         return {
-            'SingleZernike': SingleZernike.get_parameters_info(),
-            'MaskAlignment': MaskAlignment.get_parameters_info(),
-            # 'DoubleZernike': DoubleZernike.get_parameters_info(),
+            'Zernike1Control': Zernike1Control.get_parameters_info(),
+            'PupilPositionControl': PupilPositionControl.get_parameters_info(),
+            # 'Zernike2Control': Zernike2Control.get_parameters_info(),
             }
 
     @staticmethod
     def get_controls():
         return {
-            'SingleZernike': SingleZernike,
-            'MaskAlignment': MaskAlignment,
+            'Zernike1Control': Zernike1Control,
+            'PupilPositionControl': PupilPositionControl,
         }
 
     @staticmethod
