@@ -1354,12 +1354,114 @@ class SingleZernike:
                 self.h5f[addr][:] = self.P[:]
 
 
+class MaskAlignment:
+
+    @staticmethod
+    def get_default_parameters():
+        return {
+            'x0': 190.0,
+            'y0': 0.0,
+            'rho': 80,
+            'pupil_index': 0,
+            }
+
+    @staticmethod
+    def get_parameters_info():
+        return {
+            'x0': (float, (None, None), 'x0 in pixels'),
+            'y0': (float, (None, None), 'y0 in pixels'),
+            'rho': (float, (None, None), 'radius in pixels'),
+            'pupil_index': (int, (0, None), 'SLM pupil number'),
+            }
+
+    def __str__(self):
+        return (
+            f'<slm.{self.__class__.__name__} ' +
+            f'pupil={str(self.pars["pupil_index"])} ' +
+            f'ndof={self.ndof}>')
+
+    def __init__(self, slm, pars={}, h5f=None):
+        self.log = logging.getLogger(self.__class__.__name__)
+        pars = {**self.get_default_parameters(), **pars}
+        self.pars = pars
+        self.slm = slm
+        self.pupil = slm.pupils[pars['pupil_index']]
+        self.pos0 = np.array([
+            self.pars['x0'],
+            self.pars['y0'],
+            self.pars['rho']])
+
+        self.ndof = 3
+
+        self.z0 = self.pupil.aberration.flatten()
+
+        self.h5f = h5f
+
+        self.h5_save('slm', json.dumps(self.slm.save_parameters()))
+        self.h5_save('flat', self.slm.flat)
+        self.h5_save('z0', np.zeros(self.ndof))
+        self.h5_save('pos0', self.pos0)
+        self.P = None
+
+        self.h5_make_empty('z2', (self.ndof,))
+        self.h5_make_empty('x', (self.ndof,))
+        self.h5_save('ab', np.zeros(self.ndof))
+        self.h5_save('name', self.__class__.__name__)
+        self.h5_save('params', json.dumps(pars))
+
+    def save_parameters(self, merge={}):
+        d = {**merge, **self.pars}
+        d['slm'] = self.slm.save_parameters()
+        return d
+
+    def h5_make_empty(self, name, shape, dtype=np.float):
+        if self.h5f:
+            name = h5_prefix + 'SingleZernike/' + name
+            if name in self.h5f:
+                del self.h5f[name]
+            self.h5f.create_dataset(
+                name, shape + (0,), maxshape=shape + (None,),
+                dtype=dtype)
+
+    def h5_append(self, name, what):
+        if self.h5f:
+            name = h5_prefix + 'SingleZernike/' + name
+            self.h5f[name].resize((
+                self.h5f[name].shape[0], self.h5f[name].shape[1] + 1))
+            self.h5f[name][:, -1] = what
+
+    def h5_save(self, where, what):
+        if self.h5f:
+            name = h5_prefix + 'SingleZernike/' + where
+            if name in self.h5f:
+                del self.h5f[name]
+            self.h5f[name] = what
+
+    def write(self, x):
+        "Write Zernike coefficients"
+        assert(x.size == self.ndof)
+
+        z2 = self.pos0 + x
+
+        # logging
+        self.h5_append('x', x)
+        self.h5_append('z2', z2)
+
+        # write pupil
+        self.pupil.set_xy(z2[:2])
+        self.pupil.set_rho(z2[2])
+
+    def set_random_ab(self, rms=1.0):
+        raise NotImplementedError()
+
+
 class SLMControls:
 
     @staticmethod
     def get_default_parameters():
         return {
             'SingleZernike': SingleZernike.get_default_parameters(),
+            'MaskAlignment': MaskAlignment.get_default_parameters(),
             # 'DoubleZernike': DoubleZernike.get_default_parameters(),
             }
 
@@ -1367,6 +1469,7 @@ class SLMControls:
     def get_parameters_info():
         return {
             'SingleZernike': SingleZernike.get_parameters_info(),
+            'MaskAlignment': MaskAlignment.get_parameters_info(),
             # 'DoubleZernike': DoubleZernike.get_parameters_info(),
             }
 
@@ -1374,6 +1477,7 @@ class SLMControls:
     def get_controls():
         return {
             'SingleZernike': SingleZernike,
+            'MaskAlignment': MaskAlignment,
         }
 
     @staticmethod
