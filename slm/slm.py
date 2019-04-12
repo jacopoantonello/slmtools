@@ -1359,18 +1359,24 @@ class MaskAlignment:
     @staticmethod
     def get_default_parameters():
         return {
-            'x0': 190.0,
-            'y0': 0.0,
-            'rho': 80,
+            'gain_x0': 1.0,
+            'gain_y0': 1.0,
+            'gain_rho': 1.0,
             'pupil_index': 0,
             }
 
     @staticmethod
     def get_parameters_info():
         return {
-            'x0': (float, (None, None), 'x0 in pixels'),
-            'y0': (float, (None, None), 'y0 in pixels'),
-            'rho': (float, (None, None), 'radius in pixels'),
+            'gain_x0': (
+                float, (None, None),
+                'scale x0 degree of freedom (0 to disable)'),
+            'gain_y0': (
+                float, (None, None),
+                'scale x0 degree of freedom (0 to disable)'),
+            'gain_rho': (
+                float, (None, None),
+                'scale x0 degree of freedom (0 to disable)'),
             'pupil_index': (int, (0, None), 'SLM pupil number'),
             }
 
@@ -1387,11 +1393,17 @@ class MaskAlignment:
         self.slm = slm
         self.pupil = slm.pupils[pars['pupil_index']]
         self.pos0 = np.array([
-            self.pars['x0'],
-            self.pars['y0'],
-            self.pars['rho']])
+            self.pupil.xy[0],
+            self.pupil.xy[1],
+            self.pupil.rho])
 
-        self.ndof = 3
+        self.gains = np.array([
+            self.pars['gain_x0'],
+            self.pars['gain_y0'],
+            self.pars['gain_rho']
+            ])
+
+        self.ndof = (self.gains != 0.).sum()
 
         self.z0 = self.pupil.aberration.flatten()
 
@@ -1401,6 +1413,7 @@ class MaskAlignment:
         self.h5_save('flat', self.slm.flat)
         self.h5_save('z0', np.zeros(self.ndof))
         self.h5_save('pos0', self.pos0)
+        self.h5_save('gains', self.gains)
         self.P = None
 
         self.h5_make_empty('z2', (self.ndof,))
@@ -1416,7 +1429,7 @@ class MaskAlignment:
 
     def h5_make_empty(self, name, shape, dtype=np.float):
         if self.h5f:
-            name = h5_prefix + 'SingleZernike/' + name
+            name = h5_prefix + self.__class__.__name__ + '/' + name
             if name in self.h5f:
                 del self.h5f[name]
             self.h5f.create_dataset(
@@ -1425,23 +1438,30 @@ class MaskAlignment:
 
     def h5_append(self, name, what):
         if self.h5f:
-            name = h5_prefix + 'SingleZernike/' + name
+            name = h5_prefix + self.__class__.__name__ + '/' + name
             self.h5f[name].resize((
                 self.h5f[name].shape[0], self.h5f[name].shape[1] + 1))
             self.h5f[name][:, -1] = what
 
     def h5_save(self, where, what):
         if self.h5f:
-            name = h5_prefix + 'SingleZernike/' + where
+            name = h5_prefix + self.__class__.__name__ + '/' + where
             if name in self.h5f:
                 del self.h5f[name]
             self.h5f[name] = what
 
     def write(self, x):
-        "Write Zernike coefficients"
+        "Write mask alignment"
         assert(x.size == self.ndof)
 
-        z2 = self.pos0 + x
+        delta = self.gains.copy()
+        c = 0
+        for i in range(3):
+            if delta[i] != 0.0:
+                delta[i] *= x[c]
+                c += 1
+
+        z2 = self.pos0 + delta
 
         # logging
         self.h5_append('x', x)
