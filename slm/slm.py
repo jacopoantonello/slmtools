@@ -1620,17 +1620,17 @@ class OptionsPanel(QFrame):
 
                 def make_validator(k, le, type1, bounds):
                     def f():
+                        old = self.pars[self.addr_options][selection][k]
                         try:
-                            tmp = [bounds(s) for s in le.text().split(',')]
-                            self.pars[self.addr_options][selection][k] = tmp
+                            tmp = [
+                                bounds(s) for s in le.text().split(',')
+                                if s != '']
                         except Exception:
-                            le.blockSignals(True)
-                            le.setText(
-                                ', '.join([
-                                    str(c) for c in
-                                    self.pars[self.addr_options][selection][k]
-                                    ]))
-                            le.blockSignals(False)
+                            tmp = old
+                        self.pars[self.addr_options][selection][k] = tmp
+                        le.blockSignals(True)
+                        le.setText(', '.join([str(c) for c in tmp]))
+                        le.blockSignals(False)
                     return f
 
                 hand = make_validator(k, le, type1, bounds)
