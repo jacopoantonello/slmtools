@@ -1793,7 +1793,8 @@ class ControlWindow(QDialog):
         def helper_save():
             def myf1():
                 fdiag, _ = QFileDialog.getSaveFileName(
-                    directory=datetime.now().strftime('%Y%m%d_%H%M%S.json'))
+                    directory=datetime.now().strftime(
+                        '%Y%m%d_%H%M%S_slm.json'))
                 if fdiag:
                     try:
                         with open(fdiag, 'w') as f:
