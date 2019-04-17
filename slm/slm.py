@@ -337,7 +337,7 @@ class SLM(QDialog):
         for ps in d['pupils']:
             self.pupils.append(Pupil(self, ps))
 
-    def load(self, d):
+    def load_parameters(self, d):
         self.dict2parameters(d)
         self.refresh_hologram()
 
@@ -1785,7 +1785,7 @@ class ControlWindow(QDialog):
                 if fdiag:
                     try:
                         with open(fdiag, 'r') as f:
-                            self.load(json.load(f))
+                            self.load_parameters(json.load(f))
                     except Exception as e:
                         QMessageBox.information(self, 'Error', str(e))
             return myf1
@@ -1807,9 +1807,9 @@ class ControlWindow(QDialog):
         save.clicked.connect(helper_save())
         return g
 
-    def load(self, d):
+    def load_parameters(self, d):
         self.setGeometry(*d['controlwindow']['geometry'])
-        self.slm.load(d['slm'])
+        self.slm.load_parameters(d['slm'])
         self.pupilsTab.clear()
         while self.pupilsTab.count():
             self.pupilsTab.removeTab(self.pupilsTab.count() - 1)
@@ -2051,22 +2051,20 @@ def add_arguments(parser):
         metavar='JSON', help='Load a previous configuration file')
 
 
-def new_slm_window(app, args, pars=None):
+def new_slm_window(app, args, pars={}):
     slm = SLM()
     slm.show()
 
     cwin = ControlWindow(slm)
     cwin.show()
 
-    if args.slm_parameters is not None and pars is not None:
-        raise RuntimeError('Both file and dict parameters specified')
-
+    # argparse specified parameters can override pars
     if args.slm_parameters is not None:
         d = json.loads(args.slm_parameters.read())
+        pars = {**pars, **d}
         args.slm_parameters = args.slm_parameters.name
-        cwin.load(d)
-    elif pars is not None:
-        cwin.load(pars)
+
+    cwin.load_parameters(pars)
 
     return cwin
 
@@ -2104,7 +2102,7 @@ if __name__ == '__main__':
 
     if args.load:
         d = json.loads(args.load.read())
-        cwin.load(d)
+        cwin.load_parameters(d)
 
     if args.console:
         console = Console(slm, cwin)
