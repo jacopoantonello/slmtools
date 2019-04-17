@@ -1781,26 +1781,34 @@ class ControlWindow(QDialog):
 
         def helper_load():
             def myf1():
-                fdiag, _ = QFileDialog.getOpenFileName()
+                fdiag, _ = QFileDialog.getOpenFileName(
+                    self, 'Load SLM parameters',
+                    filter='JSON (*.json);;All Files (*)')
                 if fdiag:
                     try:
                         with open(fdiag, 'r') as f:
                             self.load_parameters(json.load(f))
-                    except Exception as e:
-                        QMessageBox.information(self, 'Error', str(e))
+                    except Exception as ex:
+                        QMessageBox.information(
+                            self, 'Error',
+                            f'Failed to load {fdiag}: {str(ex)}')
             return myf1
 
         def helper_save():
             def myf1():
                 fdiag, _ = QFileDialog.getSaveFileName(
+                    self, 'Save parameters',
                     directory=datetime.now().strftime(
-                        '%Y%m%d_%H%M%S_slm.json'))
+                        '%Y%m%d_%H%M%S_slm.json'),
+                    filter='JSON (*.json);;All Files (*)')
                 if fdiag:
                     try:
                         with open(fdiag, 'w') as f:
                             json.dump(self.save_parameters(), f)
-                    except Exception as e:
-                        QMessageBox.information(self, 'Error', str(e))
+                    except Exception as ex:
+                        QMessageBox.information(
+                            self, 'Error',
+                            f'Failed to write {fdiag}: {str(ex)}')
             return myf1
 
         load.clicked.connect(helper_load())
@@ -1836,7 +1844,9 @@ class ControlWindow(QDialog):
     def make_flat_tab(self):
         def helper_load_flat1():
             def myf1():
-                fdiag, _ = QFileDialog.getOpenFileName()
+                fdiag, _ = QFileDialog.getOpenFileName(
+                    self, 'Select a flat file',
+                    filter='Images (*.bmp *.png);;All Files (*)')
                 if fdiag:
                     self.slm.set_flat(fdiag)
             return myf1
