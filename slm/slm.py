@@ -1656,6 +1656,8 @@ class ControlWindow(QDialog):
 
     sig_acquire = pyqtSignal(tuple)
     sig_release = pyqtSignal(tuple)
+    sig_lock = pyqtSignal()
+    sig_unlock = pyqtSignal()
 
     def __init__(self, slm, pars={}):
         super().__init__(parent=None)
@@ -1715,6 +1717,22 @@ class ControlWindow(QDialog):
         self.setLayout(lay)
         lay.addWidget(horiz)
 
+        def lock():
+            self.mutex.lock()
+            self.can_close = False
+            for i in range(self.pupilsTab.count()):
+                self.pupilsTab.widget(i).setEnabled(False)
+            for i in range(self.tabs.count()):
+                self.tabs.widget(i).setEnabled(False)
+
+        def unlock():
+            for i in range(self.pupilsTab.count()):
+                self.pupilsTab.widget(i).setEnabled(True)
+            for i in range(self.tabs.count()):
+                self.tabs.widget(i).setEnabled(True)
+            self.can_close = True
+            self.mutex.unlock()
+
         def make_release_hand():
             def f(t):
                 for pp in self.pupilPanels:
@@ -1722,26 +1740,30 @@ class ControlWindow(QDialog):
                         f()
                 for f in self.refresh_gui:
                     f()
-                for i in range(self.pupilsTab.count()):
-                    self.pupilsTab.widget(i).setEnabled(True)
-                for i in range(self.tabs.count()):
-                    self.tabs.widget(i).setEnabled(True)
-                self.can_close = True
-                self.mutex.unlock()
+                unlock()
             return f
 
         def make_acquire_hand():
             def f(t):
-                self.mutex.lock()
-                self.can_close = False
-                for i in range(self.pupilsTab.count()):
-                    self.pupilsTab.widget(i).setEnabled(False)
-                for i in range(self.tabs.count()):
-                    self.tabs.widget(i).setEnabled(False)
+                lock()
             return f
 
         self.sig_release.connect(make_release_hand())
         self.sig_acquire.connect(make_acquire_hand())
+
+        def make_lock_hand():
+            def f():
+                lock()
+            return f
+
+        def make_unlock_hand():
+            def f():
+                unlock()
+            return f
+
+        self.sig_lock.connect(make_lock_hand())
+        self.sig_unlock.connect(make_unlock_hand())
+
         self.slm.refresh_hologram()
 
     def __str__(self):
@@ -2010,6 +2032,12 @@ class ControlWindow(QDialog):
 
     def release_control(self, control, h5f):
         self.sig_release.emit((control, h5f))
+
+    def lock_gui(self):
+        self.sig_lock.emit()
+
+    def unlock_gui(self):
+        self.sig_unlock.emit()
 
 
 class Console(QDialog):
