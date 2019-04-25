@@ -1827,7 +1827,9 @@ class ControlWindow(QDialog):
                 if fdiag:
                     try:
                         with open(fdiag, 'w') as f:
-                            json.dump(self.save_parameters(), f)
+                            json.dump(
+                                self.save_parameters(), f,
+                                sort_keys=True, indent=4)
                     except Exception as ex:
                         QMessageBox.information(
                             self, 'Error',
