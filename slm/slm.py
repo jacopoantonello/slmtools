@@ -12,6 +12,7 @@ import logging
 from time import time
 from datetime import datetime
 from math import sqrt
+from copy import deepcopy
 
 from PyQt5.QtCore import Qt, QMutex, pyqtSignal
 from PyQt5.QtGui import (
@@ -342,7 +343,7 @@ class SLM(QDialog):
         self.refresh_hologram()
 
     def save_parameters(self):
-        return self.parameters2dict()
+        return deepcopy(self.parameters2dict())
 
     def refresh_hologram(self):
         self.log.info('refresh_hologram START')
