@@ -57,32 +57,36 @@ class MyQIntValidator(QIntValidator):
 
 class Pupil():
 
-    def __init__(self, holo, pars=None):
+    def_pars = {
+        'name': 'pupil',
+        'enabled': 1,
+        'zernike_labels': {},
+        'xy': [0.0, 0.0],
+        'rho': 50.0,
+        'angle_xy': [0.0, 0.0],
+        'aberration': np.zeros((15, 1)),
+        'mask2d_on': 0,
+        'mask2d_sign': 1.0,
+        'mask3d_on': 0,
+        'mask3d_radius': 0.63,
+        'mask3d_height': 1.0,
+    }
+
+    def __init__(self, holo, pars={}):
         self.xv = None
         self.yv = None
-        self.name = None
         self.rzern = None
-        self.xy = [0.0, 0.0]
-        self.rho = 50.0
-        self.angle_xy = [0.0, 0.0]
-        self.aberration = np.zeros((15, 1))
-        self.mask2d_on = 0.0
-        self.mask2d_sign = 1.0
-        self.mask3d_on = 0.0
-        self.mask3d_radius = 0.6
-        self.mask3d_height = 1.0
         self.zernike_labels = {}
 
         self.log = logging.getLogger(self.__class__.__name__)
         self.holo = holo
-        self.name = f'pupil {len(self.holo.pupils)}'
 
-        if pars:
-            self.dict2parameters(pars)
+        self.dict2parameters({**self.def_pars, **pars})
 
     def parameters2dict(self):
         return {
             'name': self.name,
+            'enabled': self.enabled,
             'zernike_labels': self.zernike_labels,
             'xy': self.xy,
             'rho': self.rho,
@@ -97,6 +101,7 @@ class Pupil():
 
     def dict2parameters(self, d):
         self.name = d['name']
+        self.enabled = d['enabled']
         self.zernike_labels.update(d['zernike_labels'])
         self.xy = d['xy']
         self.rho = d['rho']
@@ -110,6 +115,14 @@ class Pupil():
 
     def refresh_pupil(self):
         self.log.info(f'refresh_pupil {self.name} START xy:{self.xy}')
+
+        if not self.enabled:
+            if self.rzern is None:
+                nnew = int((-3 + sqrt(9 - 4*2*(1 - self.aberration.size)))/2)
+                self.rzern = RZern(nnew)
+            self.log.info(f'refresh_pupil {self.name} END')
+            return 0
+
         dirty = False
         if (
                 self.xv is None or
@@ -117,7 +130,7 @@ class Pupil():
                 self.xv.shape[0] != self.holo.hologram_geometry[3] or
                 self.xv.shape[1] != self.holo.hologram_geometry[2]):
 
-            self.log.info(f'refresh_pupil {self.name} allocating Zernike')
+            self.log.debug(f'refresh_pupil {self.name} allocating Zernike')
 
             def make_dd(rho, n, x):
                 scale = (n/2)/rho
@@ -154,12 +167,13 @@ class Pupil():
 
         def printout(t, x):
             if isinstance(x, np.ndarray):
-                self.log.info(
+                self.log.debug(
                     f'refresh_pupil {self.name} {t} ' +
                     f'[{x.min():g}, {x.max():g}] {x.mean():g}')
             else:
-                self.log.info(
-                    f'refresh_pupil {self.name} ' + str(t) + ' [0.0, 0.0] 0.0')
+                self.log.debug(
+                    f'refresh_pupil {self.name} ' +
+                    str(t) + ' [0.0, 0.0] 0.0')
 
         printout('phi', self.phi)
         printout('phi2d', self.phi2d)
@@ -212,6 +226,14 @@ class Pupil():
                 self.holo.hologram_geometry[2]), order='F'))
         phi[self.rr >= 1.0] = 0
         self.phi = np.flipud(phi)
+
+    def set_enabled(self, enabled):
+        if enabled:
+            self.enabled = 1
+        else:
+            self.enabled = 0
+        self.xv = None
+        self.holo.refresh_hologram()
 
     def set_xy(self, xy):
         if self.xy[0] != xy[0]:
@@ -350,7 +372,8 @@ class SLM(QDialog):
 
         # [0, 1]
         if self.flat_file is None:
-            self.flat = 0.
+            self.flat = np.zeros(
+                shape=(self.hologram_geometry[3], self.hologram_geometry[2]))
         else:
             self.copy_flat_shape()
 
@@ -661,8 +684,15 @@ class PupilPanel(QFrame):
         lex = help1('x0', None, handle_xy, self.pupil.xy[0], 0)
         ley = help1('y0', None, handle_xy, self.pupil.xy[1], 1)
         lerho = help1('radius', 10, handle_rho, self.pupil.rho, 2)
+
+        cbenabled = QCheckBox('enabled')
+        cbenabled.setChecked(self.pupil.enabled)
+        cbenabled.toggled.connect(self.helper_boolupdate(
+            self.pupil.set_enabled))
+
         lename = QLineEdit(self.pupil.name)
-        l1.addWidget(lename, 1, 0, 1, 6)
+        l1.addWidget(cbenabled, 1, 0, 1, 2)
+        l1.addWidget(lename, 1, 2, 1, 4)
 
         def fname():
             def f():
