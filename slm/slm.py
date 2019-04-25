@@ -24,7 +24,7 @@ from PyQt5.QtWidgets import (
     QMessageBox, QTabWidget, QFrame, QSplitter,
     )
 
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
+from matplotlib.backends.backend_qt5agg import FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
 from matplotlib.figure import Figure
 
@@ -569,7 +569,7 @@ class MatplotlibWindow(QFrame):
         self.ax = self.figure.add_subplot(111)
         # this is the Canvas Widget that displays the `figure`
         # it takes the `figure` instance as a parameter to __init__
-        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.canvas = FigureCanvas(self.figure)
 
         # this is the Navigation widget
         # it takes the Canvas widget and a parent
@@ -598,6 +598,181 @@ class MatplotlibWindow(QFrame):
         self.canvas.draw()
 
 
+class RelSlider:
+
+    def __init__(self, val, cb):
+        self.old_val = None
+        self.fto100mul = 100
+        self.cb = cb
+
+        self.sba = QDoubleSpinBox()
+        self.sba.setValue(val)
+        self.sba_color(val)
+        self.sba.setSingleStep(1.25e-3)
+        self.sba.setToolTip('Effective value')
+        self.sba.setMinimum(-1000)
+        self.sba.setMaximum(1000)
+        self.sba.setDecimals(3)
+
+        self.qsr = QSlider(Qt.Horizontal)
+        self.qsr.setMinimum(-100)
+        self.qsr.setMaximum(100)
+        self.qsr.setValue(0)
+        self.qsr.setToolTip('Drag to apply relative delta')
+
+        self.sbm = QDoubleSpinBox()
+        self.sbm.setValue(4.0)
+        self.sbm.setSingleStep(1.25e-3)
+        self.sbm.setToolTip('Maximum relative delta')
+        self.sbm.setDecimals(2)
+        self.sbm.setMinimum(0.01)
+
+        def sba_cb():
+            def f():
+                self.block()
+                val = self.sba.value()
+                self.sba_color(val)
+                self.cb(val)
+                self.unblock()
+            return f
+
+        def qs1_cb():
+            def f(t):
+                self.block()
+
+                if self.old_val is None:
+                    self.qsr.setValue(0)
+                    self.unblock()
+                    return
+
+                val = self.old_val + self.qsr.value()/100*self.sbm.value()
+                self.sba.setValue(val)
+                self.sba_color(val)
+                self.cb(val)
+
+                self.unblock()
+            return f
+
+        def qs1_end():
+            def f():
+                self.block()
+                self.qsr.setValue(0)
+                self.old_val = None
+                self.unblock()
+            return f
+
+        def qs1_start():
+            def f():
+                self.block()
+                self.old_val = self.get_value()
+                self.unblock()
+            return f
+
+        self.sba_cb = sba_cb()
+        self.qs1_cb = qs1_cb()
+        self.qs1_start = qs1_start()
+        self.qs1_end = qs1_end()
+
+        self.sba.valueChanged.connect(self.sba_cb)
+        self.qsr.valueChanged.connect(self.qs1_cb)
+        self.qsr.sliderPressed.connect(self.qs1_start)
+        self.qsr.sliderReleased.connect(self.qs1_end)
+
+    def sba_color(self, val):
+        if abs(val) > 1e-4:
+            self.sba.setStyleSheet("font-weight: bold;")
+        else:
+            self.sba.setStyleSheet("font-weight: normal;")
+        # self.sba.update()
+
+    def block(self):
+        self.sba.blockSignals(True)
+        self.qsr.blockSignals(True)
+        self.sbm.blockSignals(True)
+
+    def unblock(self):
+        self.sba.blockSignals(False)
+        self.qsr.blockSignals(False)
+        self.sbm.blockSignals(False)
+
+    def enable(self):
+        self.sba.setEnabled(True)
+        self.qsr.setEnabled(True)
+        self.sbm.setEnabled(True)
+
+    def disable(self):
+        self.sba.setEnabled(False)
+        self.qsr.setEnabled(False)
+        self.sbm.setEnabled(False)
+
+    def fto100(self, f):
+        return int((f + self.m2)/(2*self.m2)*self.fto100mul)
+
+    def get_value(self):
+        return self.sba.value()
+
+    def set_value(self, v):
+        self.sba_color(v)
+        return self.sba.setValue(v)
+
+    def add_to_layout(self, l1, ind1, ind2):
+        l1.addWidget(self.sba, ind1, ind2)
+        l1.addWidget(self.qsr, ind1, ind2 + 1)
+        l1.addWidget(self.sbm, ind1, ind2 + 2)
+
+    def remove_from_layout(self, l1):
+        l1.removeWidget(self.sba)
+        l1.removeWidget(self.qsr)
+        l1.removeWidget(self.sbm)
+
+        self.sba.setParent(None)
+        self.qsr.setParent(None)
+        self.sbm.setParent(None)
+
+        self.sba.valueChanged.disconnect(self.sba_cb)
+        self.qsr.valueChanged.disconnect(self.qs1_cb)
+        self.qsr.sliderPressed.disconnect(self.qs1_start)
+        self.qsr.sliderReleased.disconnect(self.qs1_end)
+
+        self.sba_cb = None
+        self.qs1_cb = None
+        self.qs1_start = None
+        self.qs1_end = None
+
+        self.sb = None
+        self.qsr = None
+
+
+class PlotCoeffs(QDialog):
+
+    def set_data(self, z):
+        self.setWindowTitle('Zernike coefficients')
+        frame = QFrame()
+        fig = FigureCanvas(Figure(figsize=(7, 5)))
+        layout = QGridLayout()
+        frame.setLayout(layout)
+        nav = NavigationToolbar2QT(fig, frame)
+        layout.addWidget(nav, 0, 0)
+        layout.addWidget(fig, 1, 0)
+        fig.figure.subplots_adjust(
+            left=.125, right=.9,
+            bottom=.1, top=.9,
+            wspace=0.45, hspace=0.45)
+        self.fig = fig
+
+        ax1 = fig.figure.add_subplot(1, 1, 1)
+        ax1.plot(range(1, z.size + 1), z, marker='.')
+        ax1.grid()
+        ax1.set_xlabel('Noll')
+        ax1.set_ylabel('[rad]')
+
+        self.ax1 = ax1
+
+        l1 = QGridLayout()
+        self.setLayout(l1)
+        l1.addWidget(frame)
+
+
 class PupilPanel(QFrame):
     def __init__(self, pupil, ptabs, parent=None):
         """Subclass for a control GUI.
@@ -607,6 +782,7 @@ class PupilPanel(QFrame):
             is_parent: bool. Useful in the case of doublepass to determine
                 for instance which widget determines the overall geometry"""
         super().__init__(parent)
+        self.parent = parent
         self.refresh_gui = []
         self.pupil = pupil
         self.ptabs = ptabs
@@ -852,6 +1028,55 @@ class PupilPanel(QFrame):
         self.phase_display = phase_display
 
     def make_aberration_tab(self):
+        top = QGroupBox('Zernike aberrations')
+        toplay = QGridLayout()
+        top.setLayout(toplay)
+        labzm = QLabel('max radial order')
+        lezm = QLineEdit(str(self.pupil.rzern.n))
+        lezm.setMaximumWidth(50)
+        val = MyQIntValidator(1, 255)
+        val.setFixup(self.pupil.rzern.n)
+        lezm.setValidator(val)
+        reset = QPushButton('reset')
+        bplot = QPushButton('plot')
+        toplay.addWidget(labzm, 0, 0)
+        toplay.addWidget(lezm, 0, 1)
+        toplay.addWidget(bplot, 0, 3)
+        toplay.addWidget(reset, 0, 4)
+
+        def plotf():
+            def f():
+                self.parent.mutex.lock()
+                p = PlotCoeffs()
+                p.set_data(self.pupil.aberration.ravel())
+                p.exec_()
+                self.parent.mutex.unlock()
+            return f
+
+        bplot.clicked.connect(plotf())
+
+        scroll = QScrollArea()
+        toplay.addWidget(scroll, 1, 0, 1, 5)
+        scroll.setWidget(QWidget())
+        scrollLayout = QGridLayout(scroll.widget())
+        scroll.setWidgetResizable(True)
+        self.zernike_rows = []
+
+        def make_hand_slider(ind):
+            def f(r):
+                self.pupil.aberration[ind, 0] = r
+                self.pupil.set_aberration(self.pupil.aberration)
+
+                self.phase_display.update_phase(
+                    self.pupil.rzern.n, self.pupil.aberration)
+                self.phase_display.update()
+            return f
+
+        def make_hand_lab(le, i):
+            def f():
+                self.pupil.zernike_labels[str(i)] = le.text()
+            return f
+
         def default_zernike_name(i, n, m):
             if i == 1:
                 return 'piston'
@@ -876,147 +1101,56 @@ class PupilPanel(QFrame):
             else:
                 return ''
 
-        multiplier = 100
+        def make_update_zernike_rows():
+            def f(mynk=None):
+                if mynk is None:
+                    mynk = self.pupil.rzern.nk
+                ntab = self.pupil.rzern.ntab
+                mtab = self.pupil.rzern.mtab
+                if len(self.zernike_rows) < mynk:
+                    for i in range(len(self.zernike_rows), mynk):
+                        lab = QLabel(
+                            f'Z<sub>{i + 1}</sub> ' +
+                            f'Z<sub>{ntab[i]}</sub><sup>{mtab[i]}</sup>')
+                        slider = RelSlider(
+                            self.pupil.aberration[i, 0], make_hand_slider(i))
 
-        top = QGroupBox('Zernike aberrations')
-        toplay = QGridLayout()
-        top.setLayout(toplay)
-        labzm = QLabel('max radial order')
-        lezm = QLineEdit(str(self.pupil.rzern.n))
-        lezm.setMaximumWidth(50)
-        val = MyQIntValidator(1, 255)
-        val.setFixup(self.pupil.rzern.n)
-        lezm.setValidator(val)
-        reset = QPushButton('reset')
-        toplay.addWidget(labzm, 0, 0)
-        toplay.addWidget(lezm, 0, 1)
-        toplay.addWidget(reset, 0, 4)
+                        try:
+                            zname = self.pupil.zernike_labels[str(i)]
+                        except Exception:
+                            zname = default_zernike_name(
+                                i + 1, ntab[i], mtab[i])
+                            self.pupil.zernike_labels[str(i)] = zname
 
-        scroll = QScrollArea()
-        toplay.addWidget(scroll, 1, 0, 1, 5)
-        scroll.setWidget(QWidget())
-        scrollLayout = QGridLayout(scroll.widget())
-        scroll.setWidgetResizable(True)
+                        lbn = QLineEdit(zname)
+                        lbn.setMaximumWidth(120)
+                        hand_lab = make_hand_lab(lbn, i)
+                        lbn.editingFinished.connect(hand_lab)
 
-        def fto100(f, amp):
-            maxrad = float(amp.text())
-            return int((f + maxrad)/(2*maxrad)*multiplier)
+                        scrollLayout.addWidget(lab, i, 0)
+                        scrollLayout.addWidget(lbn, i, 1)
+                        slider.add_to_layout(scrollLayout, i, 2)
 
-        def update_coeff(slider, ind, amp):
-            def f(r):
-                slider.blockSignals(True)
-                slider.setValue(fto100(r, amp))
-                slider.blockSignals(False)
-                self.pupil.aberration[ind, 0] = r
-                self.pupil.set_aberration(self.pupil.aberration)
+                        self.zernike_rows.append((lab, slider, lbn, hand_lab))
 
-                self.phase_display.update_phase(
-                    self.pupil.rzern.n, self.pupil.aberration)
-                self.phase_display.update()
+                    assert(len(self.zernike_rows) == mynk)
+
+                elif len(self.zernike_rows) > mynk:
+                    for i in range(len(self.zernike_rows) - 1, mynk - 1, -1):
+                        lab, slider, lbn, hand_lab = self.zernike_rows.pop()
+
+                        scrollLayout.removeWidget(lab)
+                        slider.remove_from_layout(scrollLayout)
+                        scrollLayout.removeWidget(lbn)
+
+                        lbn.editingFinished.disconnect(hand_lab)
+                        lab.setParent(None)
+                        lbn.setParent(None)
+
+                    assert(len(self.zernike_rows) == mynk)
             return f
 
-        def update_amp(spinbox, slider, le, i):
-            def f():
-
-                amp = float(le.text())
-                spinbox.setRange(-amp, amp)
-                spinbox.setValue(spinbox.value())
-                slider.setValue(fto100(self.pupil.aberration[i, 0], le))
-            return f
-
-        def update_zlabel(le, i):
-            def f():
-                self.pupil.zernike_labels[str(i)] = le.text()
-            return f
-
-        def update_spinbox(s, amp):
-            def f(t):
-                maxrad = float(amp.text())
-                s.setValue(t/multiplier*(2*maxrad) - maxrad)
-            return f
-
-        def update_zernike_rows(mynk=None):
-            if mynk is None:
-                mynk = self.pupil.rzern.nk
-            ntab = self.pupil.rzern.ntab
-            mtab = self.pupil.rzern.mtab
-            if len(zernike_rows) < mynk:
-                for i in range(len(zernike_rows), mynk):
-                    lab = QLabel(
-                        'Z<sub>{}</sub> Z<sub>{}</sub><sup>{}</sup>'.format(
-                            i + 1, ntab[i], mtab[i]))
-                    slider = QSlider(Qt.Horizontal)
-                    spinbox = QDoubleSpinBox()
-                    maxamp = max((4, self.pupil.aberration[i, 0]))
-                    try:
-                        zname = self.pupil.zernike_labels[str(i)]
-                    except KeyError:
-                        zname = default_zernike_name(i + 1, ntab[i], mtab[i])
-                        self.pupil.zernike_labels[str(i)] = zname
-                    lbn = QLineEdit(zname)
-                    lbn.setMaximumWidth(120)
-                    amp = QLineEdit(str(maxamp))
-                    amp.setMaximumWidth(50)
-                    val = MyQDoubleValidator()
-                    val.setBottom(0.1)
-                    val.setFixup(str(maxamp))
-                    amp.setValidator(val)
-
-                    slider.setMinimum(0)
-                    slider.setMaximum(multiplier)
-                    slider.setFocusPolicy(Qt.StrongFocus)
-                    slider.setTickPosition(QSlider.TicksBothSides)
-                    slider.setTickInterval(20)
-                    slider.setSingleStep(0.1)
-                    slider.setValue(fto100(self.pupil.aberration[i, 0], amp))
-                    spinbox.setRange(-maxamp, maxamp)
-                    spinbox.setSingleStep(0.01)
-                    spinbox.setValue(self.pupil.aberration[i, 0])
-
-                    hand1 = update_spinbox(spinbox, amp)
-                    hand2 = update_coeff(slider, i, amp)
-                    hand3 = update_amp(spinbox, slider, amp, i)
-                    hand4 = update_zlabel(lbn, i)
-                    slider.valueChanged.connect(hand1)
-                    spinbox.valueChanged.connect(hand2)
-                    amp.editingFinished.connect(hand3)
-                    lbn.editingFinished.connect(hand4)
-
-                    scrollLayout.addWidget(lab, i, 0)
-                    scrollLayout.addWidget(lbn, i, 1)
-                    scrollLayout.addWidget(spinbox, i, 2)
-                    scrollLayout.addWidget(slider, i, 3)
-                    scrollLayout.addWidget(amp, i, 4)
-
-                    zernike_rows.append((
-                        lab, slider, spinbox, hand1, hand2, amp,
-                        hand3, lbn, hand4))
-
-                assert(len(zernike_rows) == mynk)
-
-            elif len(zernike_rows) > mynk:
-                for i in range(len(zernike_rows) - 1, mynk - 1, -1):
-                    tup = zernike_rows.pop()
-                    lab, slider, spinbox, h1, h2, amp, h3, lbn, h4 = tup
-
-                    scrollLayout.removeWidget(lab)
-                    scrollLayout.removeWidget(lbn)
-                    scrollLayout.removeWidget(spinbox)
-                    scrollLayout.removeWidget(slider)
-                    scrollLayout.removeWidget(amp)
-
-                    slider.valueChanged.disconnect(h1)
-                    spinbox.valueChanged.disconnect(h2)
-                    amp.editingFinished.disconnect(h3)
-                    lbn.editingFinished.disconnect(h4)
-
-                    lab.setParent(None)
-                    slider.setParent(None)
-                    spinbox.setParent(None)
-                    amp.setParent(None)
-                    lbn.setParent(None)
-
-                assert(len(zernike_rows) == mynk)
+        self.update_zernike_rows = make_update_zernike_rows()
 
         def reset_fun():
             self.pupil.aberration[:] = 0
@@ -1024,22 +1158,24 @@ class PupilPanel(QFrame):
             self.phase_display.update_phase(
                 self.pupil.rzern.n, self.pupil.aberration)
             self.phase_display.update()
-            update_zernike_rows(0)
-            update_zernike_rows()
+            self.update_zernike_rows(0)
+            self.update_zernike_rows()
 
         def change_radial():
             try:
                 ival = int(lezm.text())
+                assert(ival > 0)
             except Exception:
-                lezm.setText(str(self.pupil.rzern.n))
+                lezm.setText(str(len(self.zernike_rows)))
                 return
+
             n = (ival + 1)*(ival + 2)//2
             newab = np.zeros((n, 1))
-            minn = min((n, self.pupil.rzern.n))
+            minn = min((n, self.pupil.rzern.nk))
             newab[:minn, 0] = self.pupil.aberration[:minn, 0]
             self.pupil.set_aberration(newab)
 
-            update_zernike_rows()
+            self.update_zernike_rows()
             self.phase_display.update_phase(
                 self.pupil.rzern.n, self.pupil.aberration)
             self.phase_display.update()
@@ -1047,8 +1183,7 @@ class PupilPanel(QFrame):
 
         self.phase_display.update_phase(
             self.pupil.rzern.n, self.pupil.aberration)
-        zernike_rows = list()
-        update_zernike_rows()
+        self.update_zernike_rows()
 
         reset.clicked.connect(reset_fun)
         lezm.editingFinished.connect(change_radial)
@@ -1057,8 +1192,8 @@ class PupilPanel(QFrame):
 
         def f():
             def f():
-                update_zernike_rows(0)
-                update_zernike_rows()
+                self.update_zernike_rows(0)
+                self.update_zernike_rows()
                 self.phase_display.update_phase(
                     self.pupil.rzern.n, self.pupil.aberration)
                 self.phase_display.update()
@@ -1711,7 +1846,7 @@ class ControlWindow(QDialog):
 
         self.pupilsTab = QTabWidget()
         for p in self.slm.pupils:
-            pp = PupilPanel(p, self.pupilsTab)
+            pp = PupilPanel(p, self.pupilsTab, self)
             self.pupilPanels.append(pp)
 
         geom = self.make_geometry()
@@ -1878,7 +2013,7 @@ class ControlWindow(QDialog):
             self.pupilsTab.removeTab(self.pupilsTab.count() - 1)
         for i in range(len(self.slm.pupils)):
             p = self.slm.pupils[i]
-            pp = PupilPanel(p, self.pupilsTab)
+            pp = PupilPanel(p, self.pupilsTab, self)
             self.pupilPanels.append(pp)
         for pp in self.pupilPanels:
             for f in pp.refresh_gui:
@@ -2025,7 +2160,7 @@ class ControlWindow(QDialog):
         def fp():
             def f():
                 p = self.slm.add_pupil()
-                pp = PupilPanel(p, self.pupilsTab)
+                pp = PupilPanel(p, self.pupilsTab, self)
                 self.pupilPanels.append(pp)
             return f
 
