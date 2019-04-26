@@ -613,7 +613,7 @@ class RelSlider:
         self.sba = QDoubleSpinBox()
         self.sba.setMinimum(-1000)
         self.sba.setMaximum(1000)
-        self.sba.setDecimals(3)
+        self.sba.setDecimals(6)
         self.sba.setToolTip('Effective value')
         self.sba.setValue(val)
         self.sba_color(val)
