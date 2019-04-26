@@ -150,11 +150,16 @@ class Pupil():
                 dirty or
                 self.rzern is None or
                 self.aberration.size != self.rzern.nk):
-            nnew = int((-3 + sqrt(9 - 4*2*(1 - self.aberration.size)))/2)
+            nnew = int(np.ceil(
+                (-3 + sqrt(9 - 4*2*(1 - self.aberration.size)))/2))
             self.rzern = RZern(nnew)
             self.rzern.make_cart_grid(self.xv, self.yv)
             self.theta = np.arctan2(self.yv, self.xv)
             self.rr = np.sqrt(self.xv**2 + self.yv**2)
+            if self.aberration.size != self.rzern.nk:
+                tmp = np.zeros((self.rzern.nk, 1))
+                tmp[:self.aberration.size, 0] = self.aberration.ravel()
+                self.aberration = tmp
 
         self.make_phi2d()
         assert(np.all(np.isfinite(self.phi2d)))
@@ -606,13 +611,13 @@ class RelSlider:
         self.cb = cb
 
         self.sba = QDoubleSpinBox()
-        self.sba.setValue(val)
-        self.sba_color(val)
-        self.sba.setSingleStep(1.25e-3)
-        self.sba.setToolTip('Effective value')
         self.sba.setMinimum(-1000)
         self.sba.setMaximum(1000)
         self.sba.setDecimals(3)
+        self.sba.setToolTip('Effective value')
+        self.sba.setValue(val)
+        self.sba_color(val)
+        self.sba.setSingleStep(1.25e-3)
 
         self.qsr = QSlider(Qt.Horizontal)
         self.qsr.setMinimum(-100)
@@ -621,11 +626,12 @@ class RelSlider:
         self.qsr.setToolTip('Drag to apply relative delta')
 
         self.sbm = QDoubleSpinBox()
-        self.sbm.setValue(4.0)
+        self.sbm.setMinimum(0.01)
+        self.sbm.setMaximum(1000)
         self.sbm.setSingleStep(1.25e-3)
         self.sbm.setToolTip('Maximum relative delta')
         self.sbm.setDecimals(2)
-        self.sbm.setMinimum(0.01)
+        self.sbm.setValue(4.0)
 
         def sba_cb():
             def f():
@@ -1107,6 +1113,7 @@ class PupilPanel(QFrame):
                     mynk = self.pupil.rzern.nk
                 ntab = self.pupil.rzern.ntab
                 mtab = self.pupil.rzern.mtab
+
                 if len(self.zernike_rows) < mynk:
                     for i in range(len(self.zernike_rows), mynk):
                         lab = QLabel(
@@ -1148,6 +1155,7 @@ class PupilPanel(QFrame):
                         lbn.setParent(None)
 
                     assert(len(self.zernike_rows) == mynk)
+
             return f
 
         self.update_zernike_rows = make_update_zernike_rows()
