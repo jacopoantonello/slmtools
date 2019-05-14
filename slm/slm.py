@@ -55,6 +55,25 @@ class MyQIntValidator(QIntValidator):
         return str(self.fixupval)
 
 
+def transform_pupil(rzern, alpha=0., flipx=False, flipy=False):
+    if alpha != 0.:
+        R = rzern.make_rotation(alpha)
+    else:
+        R = 1
+
+    if flipx:
+        Fx = rzern.make_xflip()
+    else:
+        Fx = 1
+
+    if flipy:
+        Fy = rzern.make_yflip()
+    else:
+        Fy = 1
+
+    return np.dot(Fy, np.dot(Fx, R))
+
+
 class Pupil():
 
     def_pars = {
@@ -72,6 +91,9 @@ class Pupil():
         'mask3d_height': 1.0,
         'align_grid_on': 0,
         'align_grid_pitch': 16,
+        'flipx': 0,
+        'flipy': 0,
+        'rotate': 0.0,
     }
 
     def __init__(self, holo, pars={}):
@@ -101,6 +123,9 @@ class Pupil():
             'mask3d_height': self.mask3d_height,
             'align_grid_on': self.align_grid_on,
             'align_grid_pitch': self.align_grid_pitch,
+            'flipx': self.flipx,
+            'flipy': self.flipy,
+            'rotate': self.rotate,
         }
 
     def dict2parameters(self, d):
@@ -118,6 +143,9 @@ class Pupil():
         self.angle_xy = d['angle_xy']
         self.align_grid_on = d['align_grid_on']
         self.align_grid_pitch = d['align_grid_pitch']
+        self.flipx = d['flipx']
+        self.flipy = d['flipy']
+        self.rotate = d['rotate']
 
     def refresh_pupil(self):
         self.log.info(f'refresh_pupil {self.name} START xy:{self.xy}')
@@ -159,6 +187,8 @@ class Pupil():
             nnew = int(np.ceil(
                 (-3 + sqrt(9 - 4*2*(1 - self.aberration.size)))/2))
             self.rzern = RZern(nnew)
+            self.R = transform_pupil(
+                self.rzern, self.rotate, self.flipx, self.flipy)
             self.rzern.make_cart_grid(self.xv, self.yv)
             self.theta = np.arctan2(self.yv, self.xv)
             self.rr = np.sqrt(self.xv**2 + self.yv**2)
@@ -250,7 +280,8 @@ class Pupil():
 
     def make_phi(self):
         # [-pi, pi] principal branch
-        phi = np.pi + self.rzern.eval_grid(self.aberration)
+        a = np.dot(self.R, self.aberration)
+        phi = np.pi + self.rzern.eval_grid(a)
         phi = np.ascontiguousarray(
             phi.reshape((
                 self.holo.hologram_geometry[3],
@@ -263,6 +294,27 @@ class Pupil():
             self.enabled = 1
         else:
             self.enabled = 0
+        self.xv = None
+        self.holo.refresh_hologram()
+
+    def set_flipx(self, b):
+        if b:
+            self.flipx = 1
+        else:
+            self.flipx = 0
+        self.xv = None
+        self.holo.refresh_hologram()
+
+    def set_flipy(self, b):
+        if b:
+            self.flipy = 1
+        else:
+            self.flipy = 0
+        self.xv = None
+        self.holo.refresh_hologram()
+
+    def set_rotate(self, a):
+        self.rotate = a
         self.xv = None
         self.holo.refresh_hologram()
 
@@ -889,8 +941,8 @@ class PupilPanel(QFrame):
         group = QGroupBox('Pupil')
         l1 = QGridLayout()
 
-        def help1(txt, mini, handler, curval, i):
-            l1.addWidget(QLabel(txt), 0, 2*i)
+        def help1(txt, mini, handler, curval, i, j=0):
+            l1.addWidget(QLabel(txt), j, 2*i)
             le = QLineEdit(str(curval))
             le.editingFinished.connect(handler(i, le))
             le.setMaximumWidth(50)
@@ -899,14 +951,14 @@ class PupilPanel(QFrame):
             le.setValidator(val)
             if mini:
                 val.setBottom(mini)
-            l1.addWidget(le, 0, 2*i + 1)
+            l1.addWidget(le, j, 2*i + 1)
             return le
 
         lex = help1('x0', None, handle_xy, self.pupil.xy[0], 0)
         ley = help1('y0', None, handle_xy, self.pupil.xy[1], 1)
         lerho = help1('radius', 10, handle_rho, self.pupil.rho, 2)
 
-        cbenabled = QCheckBox('enabled')
+        cbenabled = QCheckBox('on')
         cbenabled.setChecked(self.pupil.enabled)
         cbenabled.toggled.connect(self.helper_boolupdate(
             self.pupil.set_enabled))
@@ -923,17 +975,44 @@ class PupilPanel(QFrame):
 
         lename.editingFinished.connect(fname())
 
+        def handle_rotate(i, le):
+            def f():
+                try:
+                    fval = float(le.text())
+                except Exception:
+                    le.setText(str(self.pupil.rotate))
+                    return
+                self.pupil.set_rotate(fval)
+                le.setText(str(self.pupil.rotate))
+            return f
+
+        cbx = QCheckBox('flipx')
+        cbx.setChecked(self.pupil.flipx)
+        cbx.toggled.connect(self.helper_boolupdate(
+            self.pupil.set_flipx))
+        cby = QCheckBox('flipy')
+        cby.setChecked(self.pupil.flipy)
+        cby.toggled.connect(self.helper_boolupdate(
+            self.pupil.set_flipy))
+        l1.addWidget(cbx, 2, 0)
+        l1.addWidget(cby, 2, 1)
+        lerotate = help1(
+            'rotate', None, handle_rotate, self.pupil.rotate, 2, 2)
+
         def make_f():
             def t1():
                 return self.pupil.xy, self.pupil.rho
 
             def f():
                 xy, rho = t1()
-                for p in (lex, ley, lerho):
+                for p in (lex, ley, lerho, cbx, cby, lerotate):
                     p.blockSignals(True)
                 lex.setText(str(xy[0]))
                 ley.setText(str(xy[1]))
                 lerho.setText(str(rho))
+                cbx.setEnabled(self.pupil.flipx)
+                cby.setEnabled(self.pupil.flipy)
+                lerotate.setText(str(self.pupil.rotate))
                 for p in (lex, ley, lerho):
                     p.blockSignals(False)
             return f
@@ -1564,23 +1643,8 @@ class Zernike1Control:
 
     def transform_pupil(self, alpha=0., flipx=False, flipy=False):
         rzern = self.calib.get_rzern()
+        tot = transform_pupil(rzern, alpha, flipx, flipy)
 
-        if alpha != 0.:
-            R = rzern.make_rotation(alpha)
-        else:
-            R = 1
-
-        if flipx:
-            Fx = rzern.make_xflip()
-        else:
-            Fx = 1
-
-        if flipy:
-            Fy = rzern.make_yflip()
-        else:
-            Fy = 1
-
-        tot = np.dot(Fy, np.dot(Fx, R))
         if tot.size == 1:
             return
         else:
