@@ -261,7 +261,7 @@ class Pupil():
                         ind = (k + ((j // pitch) % 2)*pitch)
                         slice1[:, ind::2*pitch] = np.pi
             grid[self.rr >= 1] = 0
-            self.align_grid = grid
+            self.align_grid = np.flipud(grid)
         else:
             self.align_grid = 0
 
