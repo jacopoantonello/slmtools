@@ -70,6 +70,8 @@ class Pupil():
         'mask3d_on': 0,
         'mask3d_radius': 0.63,
         'mask3d_height': 1.0,
+        'align_grid_on': 0,
+        'align_grid_pitch': 16,
     }
 
     def __init__(self, holo, pars={}):
@@ -97,6 +99,8 @@ class Pupil():
             'mask3d_on': self.mask3d_on,
             'mask3d_radius': self.mask3d_radius,
             'mask3d_height': self.mask3d_height,
+            'align_grid_on': self.align_grid_on,
+            'align_grid_pitch': self.align_grid_pitch,
         }
 
     def dict2parameters(self, d):
@@ -112,6 +116,8 @@ class Pupil():
         self.mask3d_radius = d['mask3d_radius']
         self.mask3d_height = d['mask3d_height']
         self.angle_xy = d['angle_xy']
+        self.align_grid_on = d['align_grid_on']
+        self.align_grid_pitch = d['align_grid_pitch']
 
     def refresh_pupil(self):
         self.log.info(f'refresh_pupil {self.name} START xy:{self.xy}')
@@ -169,6 +175,8 @@ class Pupil():
         assert(np.all(np.isfinite(self.phi)))
         self.make_grating()
         assert(np.all(np.isfinite(self.grating)))
+        self.make_align_grid()
+        assert(np.all(np.isfinite(self.align_grid)))
 
         def printout(t, x):
             if isinstance(x, np.ndarray):
@@ -188,7 +196,9 @@ class Pupil():
             self.phi +
             self.mask2d_on*self.phi2d +
             self.mask3d_on*self.phi3d +
-            self.grating)
+            self.grating +
+            self.align_grid
+            )
 
         self.log.info(f'refresh_pupil {self.name} END')
         return phase
@@ -208,6 +218,22 @@ class Pupil():
         phi3d -= phi3d.mean()
         phi3d[self.rr >= 1] = 0
         self.phi3d = np.flipud(phi3d)
+
+    def make_align_grid(self):
+        if self.align_grid_on:
+            pitch = self.align_grid_pitch
+            grid = np.zeros_like(self.rr)
+            assert(len(self.rr.shape) == 2)
+            for j in range(0, grid.shape[0], pitch):
+                slice1 = grid[j:j + pitch, :]
+                for i in range(grid.shape[1]):
+                    for k in range(pitch):
+                        ind = (k + ((j // pitch) % 2)*pitch)
+                        slice1[:, ind::2*pitch] = np.pi
+            grid[self.rr >= 1] = 0
+            self.align_grid = grid
+        else:
+            self.align_grid = 0
 
     def make_grating(self):
         m = self.holo.hologram_geometry[3]
@@ -291,6 +317,17 @@ class Pupil():
             self.mask3d_radius = 0.6*self.rho
         else:
             self.mask3d_radius = rho
+        self.holo.refresh_hologram()
+
+    def set_align_grid_on(self, on):
+        self.align_grid_on = on
+        self.holo.refresh_hologram()
+
+    def set_align_grid_pitch(self, p):
+        if p < 1:
+            self.align_grid_pitch = 1
+        else:
+            self.align_grid_pitch = p
         self.holo.refresh_hologram()
 
 
@@ -798,14 +835,16 @@ class PupilPanel(QFrame):
         self.make_3d_tab()
         self.make_phase_tab()
         self.make_grating_tab()
+        self.make_grid_tab()
         self.make_aberration_tab()
 
         top = QGridLayout()
         self.top = top
-        top.addWidget(self.group_phase, 0, 0, 4, 1)
+        top.addWidget(self.group_phase, 0, 0, 3, 1)
         top.addWidget(self.group_pupil, 0, 1)
         top.addWidget(self.group_grating, 1, 1)
         top.addWidget(self.group_2d, 2, 1)
+        top.addWidget(self.group_grid, 3, 0)
         top.addWidget(self.group_3d, 3, 1)
         top.addWidget(self.group_aberration, 4, 0, 2, 2)
         self.setLayout(top)
@@ -907,7 +946,7 @@ class PupilPanel(QFrame):
     def make_2d_tab(self):
         g = QGroupBox('2D STED')
         l1 = QGridLayout()
-        c = QCheckBox('2D on')
+        c = QCheckBox('on')
         c.setChecked(self.pupil.mask2d_on)
         c.toggled.connect(self.helper_boolupdate(
             self.pupil.set_mask2d_on))
@@ -960,7 +999,7 @@ class PupilPanel(QFrame):
             return f
 
         l1 = QGridLayout()
-        c = QCheckBox('3D on')
+        c = QCheckBox('on')
         c.setChecked(self.pupil.mask3d_on)
         c.toggled.connect(self.helper_boolupdate(
             self.pupil.set_mask3d_on))
@@ -1019,6 +1058,47 @@ class PupilPanel(QFrame):
                 slider2.setValue(int(100*self.pupil.mask3d_height))
                 for p in (slider1, slider2, spinbox1, spinbox2):
                     p.blockSignals(False)
+            return f
+
+        self.refresh_gui.append(f())
+
+    def make_grid_tab(self):
+        g = QGroupBox('Grid')
+        l1 = QGridLayout()
+        c = QCheckBox('on')
+        c.setChecked(self.pupil.align_grid_on)
+        c.toggled.connect(self.helper_boolupdate(
+            self.pupil.set_align_grid_on))
+        l1.addWidget(c, 0, 0)
+
+        le = QLineEdit(str(self.pupil.align_grid_pitch))
+        val = MyQIntValidator()
+        val.setBottom(1)
+        val.setTop(100)
+        val.setFixup(1)
+        le.setValidator(val)
+
+        def f():
+            def f():
+                try:
+                    ival = int(le.text())
+                    assert(ival > 0)
+                    self.pupil.set_align_grid_pitch(ival)
+                except Exception:
+                    le.setText(str(self.pupil.align_grid_pitch))
+                    return
+            return f
+
+        le.editingFinished.connect(f())
+        l1.addWidget(le, 0, 1)
+        g.setLayout(l1)
+
+        self.group_grid = g
+
+        def f():
+            def f():
+                c.setChecked(self.pupil.align_grid_on)
+                le.setText(str(self.pupil.align_grid_pitch))
             return f
 
         self.refresh_gui.append(f())
