@@ -105,7 +105,7 @@ class Pupil():
         self.log = logging.getLogger(self.__class__.__name__)
         self.holo = holo
 
-        self.dict2parameters({**self.def_pars, **pars})
+        self.dict2parameters({**deepcopy(self.def_pars), **deepcopy(pars)})
 
     def parameters2dict(self):
         return {
@@ -1010,8 +1010,8 @@ class PupilPanel(QFrame):
                 lex.setText(str(xy[0]))
                 ley.setText(str(xy[1]))
                 lerho.setText(str(rho))
-                cbx.setEnabled(self.pupil.flipx)
-                cby.setEnabled(self.pupil.flipy)
+                cbx.setChecked(self.pupil.flipx)
+                cby.setChecked(self.pupil.flipy)
                 lerotate.setText(str(self.pupil.rotate))
                 for p in (lex, ley, lerho):
                     p.blockSignals(False)
@@ -1542,7 +1542,11 @@ class Zernike1Control:
 
     def __init__(self, slm, pars={}, h5f=None):
         self.log = logging.getLogger(self.__class__.__name__)
-        pars = {**self.get_default_parameters(), **pars}
+        dpars = self.get_default_parameters()
+        dpars['flipx'] = slm.pupils[pars['pupil_index']]['flipx']
+        dpars['flipy'] = slm.pupils[pars['pupil_index']]['flipy']
+        dpars['rotate'] = slm.pupils[pars['pupil_index']]['rotate']
+        pars = {**deepcopy(dpars), **deepcopy(pars)}
         self.pars = pars
         self.slm = slm
         self.pupil = slm.pupils[pars['pupil_index']]
@@ -1706,7 +1710,7 @@ class PupilPositionControl:
 
     def __init__(self, slm, pars={}, h5f=None):
         self.log = logging.getLogger(self.__class__.__name__)
-        pars = {**self.get_default_parameters(), **pars}
+        pars = {**deepcopy(self.get_default_parameters()), **deepcopy(pars)}
         self.pars = pars
         self.slm = slm
         self.pupil = slm.pupils[pars['pupil_index']]
