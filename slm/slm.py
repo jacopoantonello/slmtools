@@ -1000,12 +1000,14 @@ class PupilPanel(QFrame):
             'rotate', None, handle_rotate, self.pupil.rotate, 2, 2)
 
         def make_f():
+            ctls = (lex, ley, lerho, cbx, cby, lerotate)
+
             def t1():
                 return self.pupil.xy, self.pupil.rho
 
             def f():
                 xy, rho = t1()
-                for p in (lex, ley, lerho, cbx, cby, lerotate):
+                for p in ctls:
                     p.blockSignals(True)
                 lex.setText(str(xy[0]))
                 ley.setText(str(xy[1]))
@@ -1013,7 +1015,7 @@ class PupilPanel(QFrame):
                 cbx.setChecked(self.pupil.flipx)
                 cby.setChecked(self.pupil.flipy)
                 lerotate.setText(str(self.pupil.rotate))
-                for p in (lex, ley, lerho):
+                for p in ctls:
                     p.blockSignals(False)
             return f
 
@@ -1127,15 +1129,17 @@ class PupilPanel(QFrame):
         self.group_3d = g
 
         def f():
+            ctls = (slider1, slider2, spinbox1, spinbox2)
+
             def f():
                 c.setChecked(self.pupil.mask3d_on)
-                for p in (slider1, slider2, spinbox1, spinbox2):
+                for p in ctls:
                     p.blockSignals(True)
                 spinbox1.setValue(self.pupil.mask3d_radius)
                 slider1.setValue(int(100*self.pupil.mask3d_radius))
                 spinbox2.setValue(self.pupil.mask3d_height)
                 slider2.setValue(int(100*self.pupil.mask3d_height))
-                for p in (slider1, slider2, spinbox1, spinbox2):
+                for p in ctls:
                     p.blockSignals(False)
             return f
 
@@ -1444,18 +1448,20 @@ class PupilPanel(QFrame):
         self.group_grating = pos
 
         def f():
+            ctls = (spinbox_x, spinbox_y, slider_x, slider_y)
+
             def p1():
                 return self.pupil.angle_xy[0], self.pupil.angle_xy[1]
 
             def f():
-                for p in (spinbox_x, spinbox_y, slider_x, slider_y):
+                for p in ctls:
                     p.blockSignals(True)
                 xy = p1()
                 spinbox_x.setValue(xy[0])
                 spinbox_y.setValue(xy[1])
                 slider_x.setValue(fto100(xy[0], amp))
                 slider_y.setValue(fto100(xy[1], amp))
-                for p in (spinbox_x, spinbox_y, slider_x, slider_y):
+                for p in ctls:
                     p.blockSignals(False)
             return f
 
