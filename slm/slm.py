@@ -1522,9 +1522,6 @@ class Zernike1Control:
             'min': 5,
             'max': 6,
             'pupil_index': 0,
-            'flipx': 0,
-            'flipy': 0,
-            'rotate': 0.0,
             }
 
     @staticmethod
@@ -1535,9 +1532,6 @@ class Zernike1Control:
             'min': (int, (1, None), 'Minimum Zernike index'),
             'max': (int, (1, None), 'Maximum Zernike index'),
             'pupil_index': (int, (0, None), 'SLM pupil number'),
-            'flipx': (int, (0, 1), 'Flip pupil along x'),
-            'flipy': (int, (0, 1), 'Flip pupil along y'),
-            'rotate': (float, (None, None), 'Rotate pupil in degrees'),
             }
 
     def __str__(self):
@@ -1549,9 +1543,6 @@ class Zernike1Control:
     def __init__(self, slm, pars={}, h5f=None):
         self.log = logging.getLogger(self.__class__.__name__)
         dpars = self.get_default_parameters()
-        dpars['flipx'] = slm.pupils[pars['pupil_index']]['flipx']
-        dpars['flipy'] = slm.pupils[pars['pupil_index']]['flipy']
-        dpars['rotate'] = slm.pupils[pars['pupil_index']]['rotate']
         pars = {**deepcopy(dpars), **deepcopy(pars)}
         self.pars = pars
         self.slm = slm
@@ -1581,12 +1572,11 @@ class Zernike1Control:
 
         # handle orthogonal pupil transform
         try:
-            self.transform_pupil(pars['rotate'], pars['flipx'], pars['flipy'])
+            self.transform_pupil(
+                self.pupil.rotate,
+                self.pupil.flipx, self.pupil.flipy)
         except Exception:
             self.P = None
-            self.pars['flipx'] = 0
-            self.pars['flipy'] = 0
-            self.pars['rotate'] = 0.0
 
         self.ab = np.zeros((self.ndof,))
 
