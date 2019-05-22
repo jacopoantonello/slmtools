@@ -1548,7 +1548,15 @@ class Zernike1Control:
         self.slm = slm
         self.pupil = slm.pupils[pars['pupil_index']]
 
-        self.indices = get_noll_indices(pars)
+        try:
+            enabled = self.pars['enabled']
+        except KeyError:
+            enabled = 1
+
+        if enabled:
+            self.indices = get_noll_indices(pars)
+        else:
+            self.indices = np.array([], dtype=np.int)
         self.ndof = self.indices.size
 
         z0 = self.pupil.aberration.flatten()
@@ -1983,6 +1991,7 @@ class ControlWindow(QDialog):
         self.refresh_gui = []
         self.can_close = True
         self.close_slm = True
+        self.control_enabled = True
 
         self.slm = slm
         self.pars = pars
@@ -2344,6 +2353,7 @@ class ControlWindow(QDialog):
 
         try:
             cname, pars = self.control_options.get_options()
+            pars['enabled'] = self.control_enabled
             c = SLMControls.new_control(self.slm, cname, pars, h5f)
         except Exception as ex:
             self.sig_release.emit((None, h5f))
@@ -2352,6 +2362,9 @@ class ControlWindow(QDialog):
 
     def release_control(self, control, h5f):
         self.sig_release.emit((control, h5f))
+
+    def enable_control(self, b):
+        self.control_enabled = b
 
     def lock_gui(self):
         self.sig_lock.emit()
