@@ -21,7 +21,7 @@ from PyQt5.QtWidgets import (
     QDialog, QLabel, QLineEdit, QPushButton, QComboBox, QGroupBox,
     QGridLayout, QCheckBox, QVBoxLayout, QApplication, QShortcut,
     QSlider, QDoubleSpinBox, QWidget, QFileDialog, QScrollArea,
-    QMessageBox, QTabWidget, QFrame, QSplitter,
+    QMessageBox, QTabWidget, QFrame, QSplitter, QMainWindow,
     )
 
 from matplotlib.backends.backend_qt5agg import FigureCanvas
@@ -1978,7 +1978,7 @@ class OptionsPanel(QFrame):
         self.lines.clear()
 
 
-class ControlWindow(QDialog):
+class SLMWindow(QMainWindow):
 
     sig_acquire = pyqtSignal(tuple)
     sig_release = pyqtSignal(tuple)
@@ -2040,9 +2040,10 @@ class ControlWindow(QDialog):
         horiz.addWidget(tabs)
         horiz.addWidget(self.pupilsTab)
 
-        lay = QGridLayout()
-        self.setLayout(lay)
-        lay.addWidget(horiz)
+        # lay = QGridLayout()
+        # self.setLayout(lay)
+        # lay.addWidget(horiz)
+        self.setCentralWidget(horiz)
 
         def lock():
             self.mutex.lock()
@@ -2426,7 +2427,7 @@ def new_slm_window(app, args, pars={}):
     slm = SLM()
     slm.show()
 
-    cwin = ControlWindow(slm)
+    cwin = SLMWindow(slm)
     cwin.show()
 
     # argparse specified parameters can override pars
@@ -2468,7 +2469,7 @@ if __name__ == '__main__':
     slm = SLM()
     slm.show()
 
-    cwin = ControlWindow(slm)
+    cwin = SLMWindow(slm)
     cwin.show()
 
     if args.load:
