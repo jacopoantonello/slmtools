@@ -192,6 +192,7 @@ class Pupil():
             self.rzern.make_cart_grid(self.xv, self.yv)
             self.theta = np.arctan2(self.yv, self.xv)
             self.rr = np.sqrt(self.xv**2 + self.yv**2)
+            self.mask = self.rr >= 1.
             if self.aberration.size != self.rzern.nk:
                 tmp = np.zeros((self.rzern.nk, 1))
                 tmp[:self.aberration.size, 0] = self.aberration.ravel()
@@ -230,13 +231,15 @@ class Pupil():
             self.align_grid
             )
 
+        assert(np.all(phase[self.mask] == 0.))
         self.log.info(f'refresh_pupil {self.name} END')
+
         return phase
 
     def make_phi2d(self):
         # [-pi, pi] principal branch
         phi2d = self.mask2d_sign*self.theta
-        phi2d[self.rr >= 1.0] = 0
+        phi2d[self.mask] = 0
         self.phi2d = np.flipud(phi2d)
 
     def make_phi3d(self):
@@ -260,7 +263,7 @@ class Pupil():
                     for k in range(pitch):
                         ind = (k + ((j // pitch) % 2)*pitch)
                         slice1[:, ind::2*pitch] = np.pi
-            grid[self.rr >= 1] = 0
+            grid[self.mask] = 0
             self.align_grid = np.flipud(grid)
         else:
             self.align_grid = 0
@@ -275,7 +278,7 @@ class Pupil():
             masks[0, :, :] - self.xy[0] - n/2) + self.angle_xy[1]*(
             masks[1, :, :] - self.xy[1] - m/2)
         tt = tt/value_max*2*np.pi
-        tt[self.rr >= 1.0] = 0
+        tt[self.mask] = 0
         self.grating = np.flipud(tt)
 
     def make_phi(self):
@@ -286,7 +289,7 @@ class Pupil():
             phi.reshape((
                 self.holo.hologram_geometry[3],
                 self.holo.hologram_geometry[2]), order='F'))
-        phi[self.rr >= 1.0] = 0
+        phi[self.mask] = 0
         self.phi = np.flipud(phi)
 
     def set_enabled(self, enabled):
@@ -396,19 +399,20 @@ class SLM(QDialog):
 
         self.hologram_geometry = [0, 0, 400, 200]
         self.pupils = []
+        self.grating_coeffs = [0.0, 0.0]
+        self.grating = None
 
         self.log = logging.getLogger(self.__class__.__name__)
         self.flat_file = None
         self.flat = None
         self.flat_on = 0.0
-        self.double_flat_on = False
 
         self.arr = None
         self.qim = None
         self.wrap_value = 0xff
 
         if pars:
-            self.dict2parameters(pars)
+            self.dict2parameters(**deepcopy(pars))
 
         if len(self.pupils) == 0:
             self.pupils.append(Pupil(self))
@@ -433,7 +437,7 @@ class SLM(QDialog):
             'wrap_value': self.wrap_value,
             'flat_file': self.flat_file,
             'flat_on': self.flat_on,
-            'double_flat_on': self.double_flat_on,
+            'grating_coeffs': self.grating_coeffs,
             'pupils': [p.parameters2dict() for p in self.pupils],
             }
         return d
@@ -448,7 +452,11 @@ class SLM(QDialog):
             self.flat_on = d['flat_on']
         else:
             self.flat_on = False
-        self.double_flat_on = d['double_flat_on']
+
+        if 'grating_coeffs' in d:
+            self.grating_coeffs[0] = d['grating_coeffs'][0]
+            self.grating_coeffs[1] = d['grating_coeffs'][1]
+        self.grating = None
 
         self.pupils.clear()
         for ps in d['pupils']:
@@ -489,8 +497,13 @@ class SLM(QDialog):
                 QImage.Format_RGB32)
 
         phase = 0
+        masks = np.zeros((
+            self.hologram_geometry[3], self.hologram_geometry[2]),
+            dtype=np.bool)
         for p in self.pupils:
             phase += p.refresh_pupil()
+            masks = np.logical_or(masks, np.logical_not(p.mask))
+        masks = np.logical_not(masks)
 
         def printout(t, x):
             if isinstance(x, np.ndarray):
@@ -501,9 +514,14 @@ class SLM(QDialog):
                 self.log.info(
                     f'refresh_hologram {t} ' + str(t) + ' [0.0, 0.0] 0.0')
 
+        if self.grating is None:
+            self.make_grating()
+
         # [0, 1] waves
         background = self.flat_on*self.flat
-        # [-pi, pi] principal branch rads (zero mean)
+        # add background grating in waves
+        background[masks] += self.grating[masks]/(2*np.pi)
+        # [-pi, pi] principal branch rads (zero mean) -> waves
         phase /= (2*np.pi)  # phase in waves
         # all in waves
         gray = background + phase
@@ -526,6 +544,7 @@ class SLM(QDialog):
     def copy_flat_shape(self):
         self.hologram_geometry[2] = self.flat.shape[1]
         self.hologram_geometry[3] = self.flat.shape[0]
+        self.grating = None
 
     def set_flat(self, fname, refresh_hologram=True):
         if fname is None or fname == '':
@@ -540,6 +559,7 @@ class SLM(QDialog):
             except Exception:
                 self.flat_file = None
                 self.flat = 0.0
+        self.grating = None
         if refresh_hologram:
             self.refresh_hologram()
 
@@ -549,6 +569,9 @@ class SLM(QDialog):
             self.copy_flat_shape()
         elif geometry is not None:
             self.hologram_geometry = geometry
+
+        self.grating = None
+
         if refresh:
             self.refresh_hologram()
 
@@ -563,10 +586,19 @@ class SLM(QDialog):
         self.flat_on = on
         self.refresh_hologram()
 
-    def set_double_flat_on(self, on, refresh=True):
-        self.double_flat_on = on
-        if refresh:
-            self.refresh_hologram()
+    def make_grating(self):
+        m = self.hologram_geometry[3]
+        n = self.hologram_geometry[2]
+
+        dy = np.linspace(-np.pi, np.pi, m).reshape(-1, 1)
+        dx = np.linspace(-np.pi, np.pi, n).reshape(1, -1)
+        grating = self.grating_coeffs[0]*dx + self.grating_coeffs[1]*dy
+        self.grating = np.flipud(grating)
+
+    def set_grating(self, val, ind):
+        self.grating_coeffs[ind] = val
+        self.grating = None
+        self.refresh_hologram()
 
     def keyPressEvent(self, event):
         key = event.key()
@@ -1934,7 +1966,7 @@ class SLMWindow(QMainWindow):
         self.pars = pars
         self.mutex = QMutex()
 
-        self.setWindowTitle('SLM Control' + version.__version__)
+        self.setWindowTitle('SLM Control ' + version.__version__)
         QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
 
         if 'controlwindow' in pars.keys():
@@ -1962,7 +1994,7 @@ class SLMWindow(QMainWindow):
         holo_lay.addWidget(flat, 0, 1)
         holo_lay.addWidget(wrap, 0, 2)
         holo_lay.addWidget(grating, 1, 0, 1, 2)
-        holo_lay.addWidget(pups, 1, 1)
+        holo_lay.addWidget(pups, 1, 2)
         holo_lay.addWidget(file1, 2, 0, 1, 3)
 
         tabs = QTabWidget()
@@ -2280,30 +2312,28 @@ class SLMWindow(QMainWindow):
         g = QGroupBox('Grating')
         l1 = QGridLayout()
 
-        bpls = QPushButton('+')
-        bmin = QPushButton('-')
-
-        l1.addWidget(bmin, 0, 0)
-        l1.addWidget(bpls, 0, 1)
-
-        def fp():
-            def f():
-                p = self.slm.add_pupil()
-                pp = PupilPanel(p, self.pupilsTab, self)
-                self.pupilPanels.append(pp)
+        def make_cb(ind):
+            def f(r):
+                self.slm.set_grating(r, ind)
             return f
 
-        def fm():
+        slider_x = RelSlider(self.slm.grating_coeffs[0], make_cb(0))
+        l1.addWidget(QLabel('x'), 0, 0)
+        slider_x.add_to_layout(l1, 0, 1)
+
+        slider_y = RelSlider(self.slm.grating_coeffs[1], make_cb(1))
+        l1.addWidget(QLabel('y'), 1, 0)
+        slider_y.add_to_layout(l1, 1, 1)
+
+        def f():
             def f():
-                if len(self.slm.pupils) == 1:
-                    return
-                self.pupilsTab.removeTab(len(self.slm.pupils) - 1)
-                self.pupilPanels.pop()
-                self.slm.pop_pupil()
+                for i, s in enumerate((slider_x, slider_y)):
+                    s.block()
+                    s.set_value(self.slm.grating_coeffs[i])
+                    s.unblock()
             return f
 
-        bpls.clicked.connect(fp())
-        bmin.clicked.connect(fm())
+        self.refresh_gui.append(f())
 
         g.setLayout(l1)
         return g
@@ -2349,7 +2379,7 @@ class Console(QDialog):
         self.slm = slm
         self.control = control
 
-        self.setWindowTitle('console' + version.__version__)
+        self.setWindowTitle('console ' + version.__version__)
         QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
 
         kernel_manager = QtInProcessKernelManager()
