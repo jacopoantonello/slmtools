@@ -2309,15 +2309,11 @@ class SLMWindow(QMainWindow):
         g = QGroupBox('Pupils')
         l1 = QGridLayout()
 
-        self.doubleFlatOnCheckBox = QCheckBox("Double flat")
-        self.doubleFlatOnCheckBox.setChecked(self.slm.double_flat_on)
-        self.doubleFlatOnCheckBox.toggled.connect(self.slm.set_double_flat_on)
         bpls = QPushButton('+')
         bmin = QPushButton('-')
 
         l1.addWidget(bmin, 0, 0)
         l1.addWidget(bpls, 0, 1)
-        l1.addWidget(self.doubleFlatOnCheckBox, 0, 2)
 
         def fp():
             def f():
