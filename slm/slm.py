@@ -564,12 +564,14 @@ class SLM(QDialog):
             self.refresh_hologram()
 
     def set_hologram_geometry(self, geometry, refresh=True):
-        if isinstance(self.flat, np.ndarray) and len(self.flat.shape) == 2:
+        if (
+                self.flat_file is not None and
+                isinstance(self.flat, np.ndarray) and
+                len(self.flat.shape) == 2):
             self.hologram_geometry[:2] = geometry[:2]
             self.copy_flat_shape()
         elif geometry is not None:
             self.hologram_geometry = geometry
-
         self.grating = None
 
         if refresh:
