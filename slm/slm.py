@@ -1378,91 +1378,28 @@ class PupilPanel(QFrame):
         pos = QGroupBox('Blazed grating')
         poslay = QGridLayout()
         pos.setLayout(poslay)
-        labx = QLabel('x')
-        laby = QLabel('y')
 
-        multiplier = 100
-        amp = 4
-
-        def fto100(f, amp):
-            maxrad = float(3)
-            return int((f + maxrad)/(2*maxrad)*multiplier)
-
-        # x position
-        slider_x = QSlider(Qt.Horizontal)
-        slider_x.setMinimum(0)
-        slider_x.setMaximum(multiplier)
-        slider_x.setSingleStep(0.01)
-        slider_x.setValue(fto100(self.pupil.angle_xy[0], amp))
-
-        spinbox_x = QDoubleSpinBox()
-        spinbox_x.setRange(-amp, amp)
-        spinbox_x.setSingleStep(0.01)
-        spinbox_x.setValue(self.pupil.angle_xy[0])
-
-        # y position
-        slider_y = QSlider(Qt.Horizontal)
-        slider_y.setMinimum(0)
-        slider_y.setMaximum(multiplier)
-        slider_y.setSingleStep(0.01)
-        slider_y.setValue(fto100(self.pupil.angle_xy[1], amp))
-
-        spinbox_y = QDoubleSpinBox()
-        spinbox_y.setRange(-amp, amp)
-        spinbox_y.setSingleStep(0.01)
-        spinbox_y.setValue(self.pupil.angle_xy[1])
-
-        # x position
-        poslay.addWidget(labx, 0, 0)
-        poslay.addWidget(slider_x, 0, 1)
-        poslay.addWidget(spinbox_x, 0, 2)
-        # y position
-        poslay.addWidget(laby, 0, 3)
-        poslay.addWidget(slider_y, 0, 4)
-        poslay.addWidget(spinbox_y, 0, 5)
-
-        def update_coeff(slider, amp, axis):
+        def make_cb(ind):
             def f(r):
-                slider.blockSignals(True)
-                slider.setValue(fto100(r, amp))
-                slider.blockSignals(False)
-                self.pupil.set_anglexy(r, axis)
+                self.pupil.set_anglexy(r, ind)
             return f
 
-        def update_spinbox(s, amp):
-            def f(t):
-                maxrad = float(amp)
-                s.setValue(t/multiplier*(2*maxrad) - maxrad)
-            return f
+        slider_x = RelSlider(self.pupil.angle_xy[0], make_cb(0))
+        poslay.addWidget(QLabel('x'), 0, 0)
+        slider_x.add_to_layout(poslay, 0, 1)
 
-        hand1 = update_spinbox(spinbox_x, 4)
-        hand2 = update_coeff(slider_x, 4, 0)
-        slider_x.valueChanged.connect(hand1)
-        spinbox_x.valueChanged.connect(hand2)
-
-        hand3 = update_spinbox(spinbox_y, amp)
-        hand4 = update_coeff(slider_y, amp, 1)
-        slider_y.valueChanged.connect(hand3)
-        spinbox_y.valueChanged.connect(hand4)
+        slider_y = RelSlider(self.pupil.angle_xy[1], make_cb(1))
+        poslay.addWidget(QLabel('y'), 1, 0)
+        slider_y.add_to_layout(poslay, 1, 1)
 
         self.group_grating = pos
 
         def f():
-            ctls = (spinbox_x, spinbox_y, slider_x, slider_y)
-
-            def p1():
-                return self.pupil.angle_xy[0], self.pupil.angle_xy[1]
-
             def f():
-                for p in ctls:
-                    p.blockSignals(True)
-                xy = p1()
-                spinbox_x.setValue(xy[0])
-                spinbox_y.setValue(xy[1])
-                slider_x.setValue(fto100(xy[0], amp))
-                slider_y.setValue(fto100(xy[1], amp))
-                for p in ctls:
-                    p.blockSignals(False)
+                for i, s in enumerate((slider_x, slider_y)):
+                    s.block()
+                    s.set_value(self.pupil.angle_xy[i])
+                    s.unblock()
             return f
 
         self.refresh_gui.append(f())
@@ -2016,6 +1953,7 @@ class SLMWindow(QMainWindow):
         flat = self.make_flat_tab()
         wrap = self.make_wrap_tab()
         pups = self.make_pupils_group()
+        grating = self.make_grating_group()
 
         holo = QFrame()
         holo_lay = QGridLayout()
@@ -2023,7 +1961,8 @@ class SLMWindow(QMainWindow):
         holo_lay.addWidget(geom, 0, 0)
         holo_lay.addWidget(flat, 0, 1)
         holo_lay.addWidget(wrap, 0, 2)
-        holo_lay.addWidget(pups, 1, 0)
+        holo_lay.addWidget(grating, 1, 0, 1, 2)
+        holo_lay.addWidget(pups, 1, 1)
         holo_lay.addWidget(file1, 2, 0, 1, 3)
 
         tabs = QTabWidget()
@@ -2307,6 +2246,38 @@ class SLMWindow(QMainWindow):
 
     def make_pupils_group(self):
         g = QGroupBox('Pupils')
+        l1 = QGridLayout()
+
+        bpls = QPushButton('+')
+        bmin = QPushButton('-')
+
+        l1.addWidget(bmin, 0, 0)
+        l1.addWidget(bpls, 0, 1)
+
+        def fp():
+            def f():
+                p = self.slm.add_pupil()
+                pp = PupilPanel(p, self.pupilsTab, self)
+                self.pupilPanels.append(pp)
+            return f
+
+        def fm():
+            def f():
+                if len(self.slm.pupils) == 1:
+                    return
+                self.pupilsTab.removeTab(len(self.slm.pupils) - 1)
+                self.pupilPanels.pop()
+                self.slm.pop_pupil()
+            return f
+
+        bpls.clicked.connect(fp())
+        bmin.clicked.connect(fm())
+
+        g.setLayout(l1)
+        return g
+
+    def make_grating_group(self):
+        g = QGroupBox('Grating')
         l1 = QGridLayout()
 
         bpls = QPushButton('+')
