@@ -240,7 +240,7 @@ class Pupil():
         # [-pi, pi] principal branch
         phi2d = self.mask2d_sign*self.theta
         phi2d[self.mask] = 0
-        self.phi2d = np.flipud(phi2d)
+        self.phi2d = phi2d
 
     def make_phi3d(self):
         # [-pi, pi] principal branch
@@ -250,7 +250,7 @@ class Pupil():
         # induce zero mean
         phi3d -= phi3d.mean()
         phi3d[self.rr >= 1] = 0
-        self.phi3d = np.flipud(phi3d)
+        self.phi3d = phi3d
 
     def make_align_grid(self):
         if self.align_grid_on:
@@ -264,7 +264,7 @@ class Pupil():
                         ind = (k + ((j // pitch) % 2)*pitch)
                         slice1[:, ind::2*pitch] = np.pi
             grid[self.mask] = 0
-            self.align_grid = np.flipud(grid)
+            self.align_grid = grid
         else:
             self.align_grid = 0
 
@@ -278,7 +278,7 @@ class Pupil():
 
         def span(N, off):
             small = np.arange(0, 2*rho)
-            small = np.roll(small, int(np.round(off)))
+            small = np.roll(small, int(np.floor(off)))
             small *= 2*np.pi/(2*rho)
             extended = np.tile(small, int(np.ceil(N/small.size)))
             return extended[:N]
@@ -292,7 +292,7 @@ class Pupil():
             grating = coeffs[0]*dx + coeffs[1]*dy
 
         grating[self.mask] = 0
-        self.grating = np.flipud(grating)
+        self.grating = grating
 
     def make_phi(self):
         # [-pi, pi] principal branch
@@ -303,7 +303,7 @@ class Pupil():
                 self.holo.hologram_geometry[3],
                 self.holo.hologram_geometry[2]), order='F'))
         phi[self.mask] = 0
-        self.phi = np.flipud(phi)
+        self.phi = phi
 
     def set_enabled(self, enabled):
         if enabled:
@@ -547,7 +547,7 @@ class SLM(QDialog):
         printout('gray', gray)
         assert(gray.min() >= 0)
         assert(gray.max() <= 255)
-        gray = gray.astype(np.uint8)
+        gray = np.flipud(gray.astype(np.uint8))
         self.gray = gray
         self.arr[:] = gray.astype(np.uint32)*0x010101
 
@@ -617,7 +617,7 @@ class SLM(QDialog):
 
             grating = coeffs[0]*dx + coeffs[1]*dy
 
-        self.grating = np.flipud(grating)
+        self.grating = grating
 
     def set_grating(self, val, ind):
         self.grating_coeffs[ind] = val
@@ -681,7 +681,7 @@ class PhaseDisplay(QWidget):
                     10, figsize=(self.minsize/100, self.minsize/100), dpi=100)
                 ax = fig10.gca()
                 ax.axis('off')
-                plt.imshow(self.phi)
+                plt.imshow(self.phi, origin='lower')
                 cb = plt.colorbar()
                 cb.ax.tick_params(labelsize=6)
                 fig10.canvas.draw()
