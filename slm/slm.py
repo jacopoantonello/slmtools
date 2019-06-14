@@ -269,17 +269,30 @@ class Pupil():
             self.align_grid = 0
 
     def make_grating(self):
-        m = self.holo.hologram_geometry[3]
-        n = self.holo.hologram_geometry[2]
-        value_max = 15
+        Ny = self.holo.hologram_geometry[3]
+        Nx = self.holo.hologram_geometry[2]
+        coeffs = self.angle_xy
+        x0 = self.xy[0]
+        y0 = self.xy[1]
+        rho = self.rho
 
-        masks = np.indices((m, n), dtype="float")
-        tt = self.angle_xy[0]*(
-            masks[0, :, :] - self.xy[0] - n/2) + self.angle_xy[1]*(
-            masks[1, :, :] - self.xy[1] - m/2)
-        tt = tt/value_max*2*np.pi
-        tt[self.mask] = 0
-        self.grating = np.flipud(tt)
+        def span(N, off):
+            small = np.arange(0, 2*rho)
+            small = np.roll(small, int(np.round(off)))
+            small *= 2*np.pi/(2*rho)
+            extended = np.tile(small, int(np.ceil(N/small.size)))
+            return extended[:N]
+
+        if np.nonzero(coeffs)[0].size == 0:
+            grating = np.zeros((Ny, Nx))
+        else:
+            dy = span(Ny, y0).reshape(-1, 1)
+            dx = span(Nx, x0).reshape(1, -1)
+
+            grating = coeffs[0]*dx + coeffs[1]*dy
+
+        grating[self.mask] = 0
+        self.grating = np.flipud(grating)
 
     def make_phi(self):
         # [-pi, pi] principal branch
@@ -594,7 +607,7 @@ class SLM(QDialog):
         coeffs = self.grating_coeffs
 
         def span(N):
-            return (np.arange(0, N) - N//2)/N*(2*np.pi)
+            return (np.arange(0, N) - N//2)/N*(2*np.pi) - np.pi
 
         if np.nonzero(coeffs)[0].size == 0:
             grating = np.zeros((Ny, Nx))
