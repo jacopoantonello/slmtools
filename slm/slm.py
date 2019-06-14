@@ -155,6 +155,9 @@ class Pupil():
             if self.rzern is None:
                 nnew = int((-3 + sqrt(9 - 4*2*(1 - self.aberration.size)))/2)
                 self.rzern = RZern(nnew)
+            self.mask = np.ones((
+                self.holo.hologram_geometry[3],
+                self.holo.hologram_geometry[2]), dtype=np.bool)
             self.log.info(f'refresh_pupil {self.name} END')
             return 0
 
@@ -163,7 +166,8 @@ class Pupil():
                 self.xv is None or
                 self.yv is None or
                 self.xv.shape[0] != self.holo.hologram_geometry[3] or
-                self.xv.shape[1] != self.holo.hologram_geometry[2]):
+                self.xv.shape[1] != self.holo.hologram_geometry[2] or
+                self.mask is None):
 
             self.log.debug(f'refresh_pupil {self.name} allocating Zernike')
 
@@ -184,8 +188,7 @@ class Pupil():
         if (
                 dirty or
                 self.rzern is None or
-                self.aberration.size != self.rzern.nk or
-                self.mask is None):
+                self.aberration.size != self.rzern.nk):
             nnew = int(np.ceil(
                 (-3 + sqrt(9 - 4*2*(1 - self.aberration.size)))/2))
             self.rzern = RZern(nnew)
@@ -518,6 +521,10 @@ class SLM(QDialog):
         for p in self.pupils:
             phase += p.refresh_pupil()
             masks = np.logical_or(masks, np.logical_not(p.mask))
+            assert(p.mask.shape == (
+                self.hologram_geometry[3],
+                self.hologram_geometry[2]))
+            assert(p.mask.dtype == np.bool)
         masks = np.logical_not(masks)
 
         def printout(t, x):
