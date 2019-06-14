@@ -100,6 +100,7 @@ class Pupil():
         self.xv = None
         self.yv = None
         self.rzern = None
+        self.mask = None
         self.zernike_labels = {}
 
         self.log = logging.getLogger(self.__class__.__name__)
@@ -183,7 +184,8 @@ class Pupil():
         if (
                 dirty or
                 self.rzern is None or
-                self.aberration.size != self.rzern.nk):
+                self.aberration.size != self.rzern.nk or
+                self.mask is None):
             nnew = int(np.ceil(
                 (-3 + sqrt(9 - 4*2*(1 - self.aberration.size)))/2))
             self.rzern = RZern(nnew)
