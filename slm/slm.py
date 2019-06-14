@@ -589,13 +589,21 @@ class SLM(QDialog):
         self.refresh_hologram()
 
     def make_grating(self):
+        Ny = self.hologram_geometry[3]
+        Nx = self.hologram_geometry[2]
+        coeffs = self.grating_coeffs
+
         def span(N):
             return (np.arange(0, N) - N//2)/N*(2*np.pi)
 
-        dy = span(self.hologram_geometry[3]).reshape(-1, 1)
-        dx = span(self.hologram_geometry[2]).reshape(1, -1)
+        if np.nonzero(coeffs)[0].size == 0:
+            grating = np.zeros((Ny, Nx))
+        else:
+            dy = span(Ny).reshape(-1, 1)
+            dx = span(Nx).reshape(1, -1)
 
-        grating = self.grating_coeffs[0]*dx + self.grating_coeffs[1]*dy
+            grating = coeffs[0]*dx + coeffs[1]*dy
+
         self.grating = np.flipud(grating)
 
     def set_grating(self, val, ind):
