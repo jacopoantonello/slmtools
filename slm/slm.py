@@ -283,17 +283,21 @@ class Pupil():
 
         def span(N, off):
             small = np.arange(0, 2*rho)
-            small = np.roll(small, int(np.floor(off)))
+            Nroll = int(np.floor(off))
+            Ntile = int(np.ceil(N/small.size))
+            small = np.roll(small, Nroll)
             small *= 2*np.pi/(2*rho)
-            extended = np.tile(small, int(np.ceil(N/small.size)))
-            return extended[:N]
+            extended = np.tile(small, Ntile)
+            pv = np.arange(-Ntile//2, Ntile//2).reshape(-1, 1)
+            pv = pv*(2*np.pi)*np.ones((1, small.size))
+            pv = np.roll(pv, Nroll)
+            return extended[:N] + pv.ravel()
 
         if np.nonzero(coeffs)[0].size == 0:
             grating = np.zeros((Ny, Nx))
         else:
             dy = span(Ny, y0).reshape(-1, 1)
             dx = span(Nx, x0).reshape(1, -1)
-
             grating = coeffs[0]*dx + coeffs[1]*dy
 
         grating[self.mask] = 0
