@@ -579,8 +579,8 @@ class SLM(QDialog):
         else:
             try:
                 self.flat_file = fname
-                self.flat = np.ascontiguousarray(
-                    plt.imread(fname), dtype=np.float)/255
+                self.flat = np.flipud(np.ascontiguousarray(
+                    plt.imread(fname), dtype=np.float)/255)
                 self.copy_flat_shape()
             except Exception:
                 self.flat_file = None
