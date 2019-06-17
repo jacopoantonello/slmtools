@@ -291,7 +291,7 @@ class Pupil():
             pv = np.arange(-Ntile//2, Ntile//2).reshape(-1, 1)
             pv = pv*(2*np.pi)*np.ones((1, small.size))
             pv = np.roll(pv, Nroll)
-            return extended[:N] + pv.ravel()
+            return extended[:N] + pv.ravel()[:N]
 
         if np.nonzero(coeffs)[0].size == 0:
             grating = np.zeros((Ny, Nx))
