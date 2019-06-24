@@ -86,6 +86,7 @@ class Pupil():
         'aberration': np.zeros((15, 1)),
         'mask2d_on': 0,
         'mask2d_sign': 1.0,
+        'mask2d_mul': 1.0,
         'mask3d_on': 0,
         'mask3d_radius': 0.63,
         'mask3d_height': 1.0,
@@ -119,6 +120,7 @@ class Pupil():
             'aberration': self.aberration.ravel().tolist(),
             'mask2d_on': self.mask2d_on,
             'mask2d_sign': self.mask2d_sign,
+            'mask2d_mul': self.mask2d_mul,
             'mask3d_on': self.mask3d_on,
             'mask3d_radius': self.mask3d_radius,
             'mask3d_height': self.mask3d_height,
@@ -138,6 +140,7 @@ class Pupil():
         self.aberration = np.array(d['aberration']).reshape((-1, 1))
         self.mask2d_on = d['mask2d_on']
         self.mask2d_sign = d['mask2d_sign']
+        self.mask2d_mul = d['mask2d_mul']
         self.mask3d_on = d['mask3d_on']
         self.mask3d_radius = d['mask3d_radius']
         self.mask3d_height = d['mask3d_height']
@@ -243,7 +246,9 @@ class Pupil():
 
     def make_phi2d(self):
         # [-pi, pi] principal branch
-        phi2d = self.mask2d_sign*self.theta
+        theta = (self.theta + np.pi)/(2*np.pi)
+        theta = np.power(theta, self.mask2d_mul)
+        phi2d = self.mask2d_sign*theta*(2*np.pi) - np.pi
         phi2d[self.mask] = 0
         self.phi2d = phi2d
 
@@ -364,6 +369,10 @@ class Pupil():
 
     def set_mask2d_sign(self, s):
         self.mask2d_sign = s
+        self.holo.refresh_hologram()
+
+    def set_mask2d_mul(self, s):
+        self.mask2d_mul = s
         self.holo.refresh_hologram()
 
     def set_mask3d_height(self, s):
@@ -1109,6 +1118,15 @@ class PupilPanel(QFrame):
 
         s = RelSlider(self.pupil.mask2d_sign, f())
         s.add_to_layout(l1, 1, 0)
+
+        def f2():
+            def f(r):
+                self.pupil.set_mask2d_mul(r)
+            return f
+
+        s2 = RelSlider(self.pupil.mask2d_mul, f2())
+        s2.add_to_layout(l1, 2, 0)
+
         g.setLayout(l1)
         self.group_2d = g
 
@@ -1117,6 +1135,7 @@ class PupilPanel(QFrame):
                 c.setChecked(self.pupil.mask2d_on)
                 s.block()
                 s.set_value(self.pupil.mask2d_sign)
+                s2.set_value(self.pupil.mask2d_mul)
                 s.unblock()
             return f
 
