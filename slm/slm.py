@@ -1101,35 +1101,23 @@ class PupilPanel(QFrame):
         c.toggled.connect(self.helper_boolupdate(
             self.pupil.set_mask2d_on))
         l1.addWidget(c, 0, 0)
-        sign2d = QComboBox()
-        sign2d.addItem('+1')
-        sign2d.addItem('-1')
-        if self.pupil.mask2d_sign == 1:
-            sign2d.setCurrentIndex(0)
-        else:
-            sign2d.setCurrentIndex(1)
 
-        def toggle_float(fun):
-            def f(val):
-                if val == 0:
-                    fun(float(1))
-                else:
-                    fun(float(-1))
+        def f():
+            def f(r):
+                self.pupil.set_mask2d_sign(r)
             return f
 
-        sign2d.activated.connect(toggle_float(self.pupil.set_mask2d_sign))
-        l1.addWidget(sign2d, 0, 1)
+        s = RelSlider(self.pupil.mask2d_sign, f())
+        s.add_to_layout(l1, 1, 0)
         g.setLayout(l1)
-
         self.group_2d = g
 
         def f():
             def f():
                 c.setChecked(self.pupil.mask2d_on)
-                if self.pupil.mask2d_sign == 1:
-                    sign2d.setCurrentIndex(0)
-                else:
-                    sign2d.setCurrentIndex(1)
+                s.block()
+                s.set_value(self.pupil.mask2d_sign)
+                s.unblock()
             return f
 
         self.refresh_gui.append(f())
