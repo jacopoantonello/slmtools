@@ -851,6 +851,11 @@ class RelSlider:
         self.qsr.sliderPressed.connect(self.qs1_start)
         self.qsr.sliderReleased.connect(self.qs1_end)
 
+    def set_tooltip(self, t):
+        self.sba.setToolTip(t)
+        self.qsr.setToolTip(t)
+        self.sbm.setToolTip(t)
+
     def sba_color(self, val):
         if abs(val) > 1e-4:
             self.sba.setStyleSheet("font-weight: bold;")
@@ -1109,23 +1114,32 @@ class PupilPanel(QFrame):
         c.setChecked(self.pupil.mask2d_on)
         c.toggled.connect(self.helper_boolupdate(
             self.pupil.set_mask2d_on))
-        l1.addWidget(c, 0, 0)
+        l1.addWidget(c, 0, 0, 1, 3)
 
         def f():
             def f(r):
                 self.pupil.set_mask2d_sign(r)
             return f
 
+        lab1 = QLabel('m')
+        l1.addWidget(lab1, 1, 0)
         s = RelSlider(self.pupil.mask2d_sign, f())
-        s.add_to_layout(l1, 1, 0)
+        s.add_to_layout(l1, 1, 1)
+        lab1.setToolTip('Momentum')
+        s.set_tooltip('Momentum')
 
         def f2():
             def f(r):
                 self.pupil.set_mask2d_mul(r)
             return f
 
+        lab2 = QLabel('α')
+        l1.addWidget(lab2, 2, 0)
         s2 = RelSlider(self.pupil.mask2d_mul, f2())
-        s2.add_to_layout(l1, 2, 0)
+        s2.add_to_layout(l1, 2, 1)
+        tt2 = 'θ<sup>α</sup>'
+        lab2.setToolTip(tt2)
+        s2.set_tooltip(tt2)
 
         g.setLayout(l1)
         self.group_2d = g
