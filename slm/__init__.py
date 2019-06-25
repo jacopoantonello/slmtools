@@ -4,7 +4,7 @@
 from slm import version
 
 __author__ = 'J Antonello, A. Barbotin'
-__copyright__ = 'Copyright 2019 J Antonello and A. Barbotin'
+__copyright__ = 'Copyright 2018-2019 J Antonello and A. Barbotin'
 __license__ = 'GPLv3+'
 __email__ = 'jacopo@antonello.org, aurelien.barbotin@dtc.ox.ac.uk'
 __status__ = 'Prototype'

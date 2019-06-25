@@ -3,36 +3,20 @@ Spatial light modulator in Python.
 
 # Main Features
 * 2D and 3D STED masks
-* double pass
+* multiple passes
 * Zernike aberration control
 
-# Required packages
-* [zernike](https://github.com/jacopoantonello/zernike/)
+# Installation
 
-# Develop installation
+### Linux
 ```bash
 python setup.py develop --user
 ```
 
-# Static installation
-For Linux use
+### Windows
+First install the external requirements:
+* [Anaconda](https://www.anaconda.com/distribution/) for Python 3
+* [Git](https://git-scm.com/download/win)
+* [zernike](https://github.com/jacopoantonello/zernike)
 
-```bash
-python setup.py install --user
-```
-
-For Windows use
-
-```bash
-python setup.py bdist_wheel
-pip install dist\*.whl
-```
-
-# How to run
-Open a terminal and navigate to a folder outside the `slm` source folder
-
-```bash
-python -m slm.slm
-```
-    
-Or in double click in `run_gui.bat` in Windows.
+Then double-click on `install.bat`. To run the GUI, double-click on `run.bat`.

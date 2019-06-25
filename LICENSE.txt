@@ -1,5 +1,5 @@
-Copyright 2018 J. Antonello <jacopo.antonello@dpag.ox.ac.uk>
-Copyright 2018 A. Barbotin <aurelien.barbotin@dtc.ox.ac.uk>
+Copyright 2018-2019 J. Antonello <jacopo@antonello.org>
+Copyright 2018-2019 A. Barbotin <aurelien.barbotin@dtc.ox.ac.uk>
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
