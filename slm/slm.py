@@ -1554,11 +1554,11 @@ class Zernike1Control:
     @staticmethod
     def get_parameters_info():
         return {
-            'include': (list, int, 'Zernike indices to include'),
-            'exclude': (list, int, 'Zernike indices to include'),
-            'min': (int, (1, None), 'Minimum Zernike index'),
-            'max': (int, (1, None), 'Maximum Zernike index'),
-            'pupil_index': (int, (0, None), 'SLM pupil number'),
+            'include': (list, int, 'Zernike indices to include', 1),
+            'exclude': (list, int, 'Zernike indices to include', 1),
+            'min': (int, (1, None), 'Minimum Zernike index', 1),
+            'max': (int, (1, None), 'Maximum Zernike index', 1),
+            'pupil_index': (int, (0, None), 'SLM pupil number', 0),
             }
 
     def __str__(self):
@@ -1723,14 +1723,14 @@ class PupilPositionControl:
         return {
             'gain_x0': (
                 float, (None, None),
-                'scale x0 degree of freedom (0 to disable)'),
+                'scale x0 degree of freedom (0 to disable)', 1),
             'gain_y0': (
                 float, (None, None),
-                'scale x0 degree of freedom (0 to disable)'),
+                'scale x0 degree of freedom (0 to disable)', 1),
             'gain_rho': (
                 float, (None, None),
-                'scale x0 degree of freedom (0 to disable)'),
-            'pupil_index': (int, (0, None), 'SLM pupil number'),
+                'scale x0 degree of freedom (0 to disable)', 1),
+            'pupil_index': (int, (0, None), 'SLM pupil number', 0),
             }
 
     def __str__(self):
@@ -1928,6 +1928,9 @@ class OptionsPanel(QFrame):
     def from_dict(self, selection, infod, valuesd):
         count = 0
         for k, v in infod.items():
+            if v[-1] == 0:
+                continue
+
             lab = QLabel(k)
 
             type1 = v[0]
