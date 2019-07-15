@@ -2445,6 +2445,7 @@ class SLMWindow(QMainWindow):
         try:
             cname, pars = self.control_options.get_options()
             pars['enabled'] = self.control_enabled
+            pars['pupil_index'] = self.pupilsTab.currentIndex()
             c = SLMControls.new_control(self.slm, cname, pars, h5f)
         except Exception as ex:
             self.sig_release.emit((None, h5f))
