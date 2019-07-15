@@ -1505,9 +1505,18 @@ def get_noll_indices(params):
     mexclude = np.array(params['exclude'], dtype=np.int)
 
     mrange = np.arange(noll_min, noll_max + 1, dtype=np.int)
-    zernike_indices = np.setdiff1d(
+    zernike_indices1 = np.setdiff1d(
         np.union1d(np.unique(mrange), np.unique(minclude)),
         np.unique(mexclude))
+    zernike_indices = []
+    for k in minclude:
+        if k in zernike_indices1 and k not in zernike_indices:
+            zernike_indices.append(k)
+    remaining = np.setdiff1d(zernike_indices1, np.unique(zernike_indices))
+    for k in remaining:
+        zernike_indices.append(k)
+    assert(len(zernike_indices) == zernike_indices1.size)
+    zernike_indices = np.array(zernike_indices, dtype=np.int)
 
     return zernike_indices
 
@@ -1926,7 +1935,25 @@ class OptionsPanel(QFrame):
             )
 
     def from_dict(self, selection, infod, valuesd):
+        def get_noll():
+            indices = [str(s) for s in get_noll_indices(
+                self.pars[self.addr_options][selection]).tolist()]
+            return ', '.join(indices)
+
         count = 0
+        if selection == 'Zernike1Control':
+            lab = QLabel('Noll indices')
+            self.lay.addWidget(lab, count, 0)
+            le = QLineEdit(get_noll())
+            le.setReadOnly(True)
+            self.lay.addWidget(le, count, 1)
+            self.lines.append(((le, lab), None))
+
+            le_noll = le
+            count = 1
+        else:
+            le_noll = None
+
         for k, v in infod.items():
             if v[-1] == 0:
                 continue
@@ -1946,6 +1973,8 @@ class OptionsPanel(QFrame):
                     self.pars[
                         self.addr_options][selection][k] = type1(le.text())
                     val.setFixup(newval)
+                    if le_noll:
+                        le_noll.setText(get_noll())
                 return f
 
             def ledisc(w, hand):
@@ -1987,6 +2016,8 @@ class OptionsPanel(QFrame):
                         le.blockSignals(True)
                         le.setText(', '.join([str(c) for c in tmp]))
                         le.blockSignals(False)
+                        if le_noll:
+                            le_noll.setText(get_noll())
                     return f
 
                 hand = make_validator(k, le, type1, bounds)
@@ -2004,7 +2035,8 @@ class OptionsPanel(QFrame):
             for w in l[0]:
                 self.lay.removeWidget(w)
                 w.setParent(None)
-            l[1]()
+            if l[1]:
+                l[1]()
         self.lines.clear()
 
 
