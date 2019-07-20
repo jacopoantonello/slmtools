@@ -319,13 +319,14 @@ class Pupil():
         phi[self.mask] = 0
         self.phi = phi
 
-    def set_enabled(self, enabled):
+    def set_enabled(self, enabled, update=True):
         if enabled:
             self.enabled = 1
         else:
             self.enabled = 0
         self.xv = None
-        self.holo.refresh_hologram()
+        if update:
+            self.holo.refresh_hologram()
 
     def set_flipx(self, b):
         if b:
@@ -2375,9 +2376,11 @@ class SLMWindow(QMainWindow):
 
         bpls = QPushButton('+')
         bmin = QPushButton('-')
+        btoggle = QPushButton('toggle')
 
         l1.addWidget(bmin, 0, 0)
         l1.addWidget(bpls, 0, 1)
+        l1.addWidget(btoggle, 1, 0)
 
         def fp():
             def f():
@@ -2395,8 +2398,16 @@ class SLMWindow(QMainWindow):
                 self.slm.pop_pupil()
             return f
 
+        def ft():
+            def f():
+                for p in self.slm.pupils:
+                    p.set_enabled(not p.enabled, update=False)
+                self.slm.refresh_hologram()
+            return f
+
         bpls.clicked.connect(fp())
         bmin.clicked.connect(fm())
+        btoggle.clicked.connect(ft())
 
         g.setLayout(l1)
         return g
