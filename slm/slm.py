@@ -708,9 +708,9 @@ class PhaseDisplay(QWidget):
                 cb = plt.colorbar()
                 cb.ax.tick_params(labelsize=6)
                 fig10.canvas.draw()
-                size = fig10.canvas.get_width_height()
-                assert(size[0] == self.arr.shape[0])
-                assert(size[1] == self.arr.shape[1])
+                # size = fig10.canvas.get_width_height()
+                # assert(size[0] == self.arr.shape[0])
+                # assert(size[1] == self.arr.shape[1])
                 drawn = np.frombuffer(
                             fig10.canvas.tostring_rgb(),
                             dtype=np.uint8).reshape(
@@ -728,11 +728,18 @@ class PhaseDisplay(QWidget):
 
 class MatplotlibWindow(QFrame):
 
-    def __init__(self, slm, parent=None, toolbar=True, figsize=None):
+    def __init__(
+            self, slm, slmwindow, parent=None, toolbar=True, figsize=None):
         super().__init__(parent)
 
         self.shape = None
         self.im = None
+
+        self.circ_ind = None
+        self.circ = None
+        self.circ_rho = None
+        self.circ_xy = None
+        self.circ_geometry = None
 
         # a figure instance to plot on
         if figsize is None:
@@ -756,17 +763,58 @@ class MatplotlibWindow(QFrame):
         layout.addWidget(self.canvas)
         self.setLayout(layout)
         self.slm = slm
+        self.slmwindow = slmwindow
         self.figure.subplots_adjust(
             left=0, bottom=0, right=1, top=1, wspace=None, hspace=None)
+
+    def check_circ(self):
+        if self.circ is None:
+            return 1
+        elif self.circ_ind != self.slmwindow.pupilsTab.currentIndex():
+            return 1
+        elif not np.allclose(self.circ_geometry, self.slm.hologram_geometry):
+            return 1
+        else:
+            p = slm.pupils[self.circ_ind]
+            if (
+                    p.rho != self.circ_rho or
+                    not np.allclose(p.xy, self.circ_xy)):
+                return 1
+            else:
+                return 0
+
+    def refresh_circle(self):
+        if self.check_circ():
+            self.circ_ind = self.slmwindow.pupilsTab.currentIndex()
+            if self.circ:
+                self.circ[0].remove()
+            p = slm.pupils[self.circ_ind]
+            ll = np.linspace(0, 2*np.pi, 50)
+            self.circ = self.ax.plot(
+                p.rho*np.cos(ll) + p.xy[0] + self.slm.hologram_geometry[2]/2,
+                p.rho*np.sin(ll) - p.xy[1] + self.slm.hologram_geometry[3]/2,
+                color='r')
+            self.circ_rho = p.rho
+            self.circ_xy = np.array(p.xy, copy=1)
+            self.circ_geometry = np.array(self.slm.hologram_geometry, copy=1)
+            self.canvas.draw()
 
     def update_array(self):
         if self.slm.gray is None:
             return
         if self.im is None or self.slm.gray.shape != self.shape:
+            if self.im:
+                self.ax.clear()
+                self.circ = None
             self.im = self.ax.imshow(
                 self.slm.gray, cmap="gray", vmin=0, vmax=0xff)
             self.ax.axis("off")
             self.shape = self.slm.gray.shape
+        if self.circ and len(self.slm.pupils) == 1:
+            self.circ[0].remove()
+        elif self.check_circ() and len(self.slm.pupils) != 1:
+            self.refresh_circle()
+
         self.im.set_data(self.slm.gray)
         self.canvas.draw()
 
@@ -2180,9 +2228,10 @@ class SLMWindow(QMainWindow):
         return f
 
     def make_general_display(self):
-        display = MatplotlibWindow(self.slm, figsize=(8, 6))
-        self.slm.refreshHologramSignal.connect(display.update_array)
-        return display
+        mpwin = MatplotlibWindow(self.slm, self, figsize=(8, 6))
+        self.slm.refreshHologramSignal.connect(mpwin.update_array)
+        self.pupilsTab.currentChanged.connect(mpwin.refresh_circle)
+        return mpwin
 
     def make_file_tab(self):
         """Rewriting the file tab to facilitate loading of 2-pupil files"""
