@@ -443,7 +443,7 @@ class SLM(QDialog):
         self.wrap_value = 0xff
 
         if pars:
-            self.dict2parameters(**deepcopy(pars))
+            self.dict2parameters(deepcopy(pars))
 
         if len(self.pupils) == 0:
             self.pupils.append(Pupil(self))
