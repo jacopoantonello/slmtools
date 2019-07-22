@@ -775,7 +775,7 @@ class MatplotlibWindow(QFrame):
         elif not np.allclose(self.circ_geometry, self.slm.hologram_geometry):
             return 1
         else:
-            p = slm.pupils[self.circ_ind]
+            p = self.slm.pupils[self.circ_ind]
             if (
                     p.rho != self.circ_rho or
                     not np.allclose(p.xy, self.circ_xy)):
@@ -788,7 +788,7 @@ class MatplotlibWindow(QFrame):
             self.circ_ind = self.slmwindow.pupilsTab.currentIndex()
             if self.circ:
                 self.circ[0].remove()
-            p = slm.pupils[self.circ_ind]
+            p = self.slm.pupils[self.circ_ind]
             ll = np.linspace(0, 2*np.pi, 50)
             self.circ = self.ax.plot(
                 p.rho*np.cos(ll) + p.xy[0] + self.slm.hologram_geometry[2]/2,
