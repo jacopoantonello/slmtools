@@ -1010,7 +1010,7 @@ class PupilPanel(QFrame):
                 for instance which widget determines the overall geometry"""
         super().__init__(parent)
         self.parent = parent
-        self.refresh_gui = []
+        self.refresh_gui = {}
         self.pupil = pupil
         self.ptabs = ptabs
 
@@ -1132,7 +1132,7 @@ class PupilPanel(QFrame):
             'rotate', None, handle_rotate, self.pupil.rotate, 2, 2)
 
         def make_f():
-            ctls = (lex, ley, lerho, cbx, cby, lerotate)
+            ctls = (lex, ley, lerho, cbx, cby, lerotate, cbenabled)
 
             def t1():
                 return self.pupil.xy, self.pupil.rho
@@ -1147,11 +1147,12 @@ class PupilPanel(QFrame):
                 cbx.setChecked(self.pupil.flipx)
                 cby.setChecked(self.pupil.flipy)
                 lerotate.setText(str(self.pupil.rotate))
+                cbenabled.setChecked(self.pupil.enabled)
                 for p in ctls:
                     p.blockSignals(False)
             return f
 
-        self.refresh_gui.append(make_f())
+        self.refresh_gui['pupil'] = make_f()
 
         group.setLayout(l1)
         self.group_pupil = group
@@ -1202,7 +1203,7 @@ class PupilPanel(QFrame):
                 s.unblock()
             return f
 
-        self.refresh_gui.append(f())
+        self.refresh_gui['2d'] = f()
 
     def make_3d_tab(self):
         g = QGroupBox('3D STED')
@@ -1282,7 +1283,7 @@ class PupilPanel(QFrame):
                     p.blockSignals(False)
             return f
 
-        self.refresh_gui.append(f())
+        self.refresh_gui['3d'] = f()
 
     def make_grid_tab(self):
         g = QGroupBox('Grid')
@@ -1323,7 +1324,7 @@ class PupilPanel(QFrame):
                 le.setText(str(self.pupil.align_grid_pitch))
             return f
 
-        self.refresh_gui.append(f())
+        self.refresh_gui['grid'] = f()
 
     def make_phase_tab(self):
         g = QGroupBox('Phase')
@@ -1509,7 +1510,7 @@ class PupilPanel(QFrame):
                 self.phase_display.update()
             return f
 
-        self.refresh_gui.append(f())
+        self.refresh_gui['aberration'] = f()
 
     def make_grating_tab(self):
         """Position tab is meant to help positionning the phase mask
@@ -1541,7 +1542,7 @@ class PupilPanel(QFrame):
                     s.unblock()
             return f
 
-        self.refresh_gui.append(f())
+        self.refresh_gui['grating'] = f()
 
     def keyPressEvent(self, event):
         pass
@@ -2099,7 +2100,7 @@ class SLMWindow(QMainWindow):
     def __init__(self, slm, pars={}):
         super().__init__(parent=None)
         self.pupilPanels = []
-        self.refresh_gui = []
+        self.refresh_gui = {}
         self.can_close = True
         self.close_slm = True
         self.control_enabled = True
@@ -2177,10 +2178,10 @@ class SLMWindow(QMainWindow):
         def make_release_hand():
             def f(t):
                 for pp in self.pupilPanels:
-                    for f in pp.refresh_gui:
-                        f()
-                for f in self.refresh_gui:
-                    f()
+                    for _, v in pp.refresh_gui.items():
+                        v()
+                for _, v in self.refresh_gui.items():
+                    v()
                 unlock()
             return f
 
@@ -2292,9 +2293,9 @@ class SLMWindow(QMainWindow):
             pp = PupilPanel(p, self.pupilsTab, self)
             self.pupilPanels.append(pp)
         for pp in self.pupilPanels:
-            for f in pp.refresh_gui:
+            for _, f in pp.refresh_gui.items():
                 f()
-        for f in self.refresh_gui:
+        for _, f in self.refresh_gui.items():
             f()
 
     def save_parameters(self):
@@ -2334,7 +2335,7 @@ class SLMWindow(QMainWindow):
                 cboxlf.setChecked(self.slm.flat_on)
             return f
 
-        self.refresh_gui.append(f())
+        self.refresh_gui['flat'] = f()
         return g
 
     def make_geometry(self):
@@ -2382,7 +2383,7 @@ class SLMWindow(QMainWindow):
                     le.blockSignals(False)
             return f
 
-        self.refresh_gui.append(f())
+        self.refresh_gui['geometry'] = f()
         group.setLayout(l1)
         return group
 
@@ -2416,7 +2417,7 @@ class SLMWindow(QMainWindow):
                 lewrap.setText(str(self.slm.wrap_value))
             return f
 
-        self.refresh_gui.append(f())
+        self.refresh_gui['wrap'] = f()
         return g
 
     def make_pupils_group(self):
@@ -2449,8 +2450,9 @@ class SLMWindow(QMainWindow):
 
         def ft():
             def f():
-                for p in self.slm.pupils:
+                for p, pp in zip(self.slm.pupils, self.pupilPanels):
                     p.set_enabled(not p.enabled, update=False)
+                    pp.refresh_gui['pupil']()
                 self.slm.refresh_hologram()
             return f
 
@@ -2486,7 +2488,7 @@ class SLMWindow(QMainWindow):
                     s.unblock()
             return f
 
-        self.refresh_gui.append(f())
+        self.refresh_gui['grating'] = f()
 
         g.setLayout(l1)
         return g
