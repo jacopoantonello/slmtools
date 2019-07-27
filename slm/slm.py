@@ -2286,6 +2286,7 @@ class SLMWindow(QMainWindow):
         self.setGeometry(*d['controlwindow']['geometry'])
         self.slm.load_parameters(d['slm'])
         self.pupilsTab.clear()
+        self.pupilPanels.clear()
         while self.pupilsTab.count():
             self.pupilsTab.removeTab(self.pupilsTab.count() - 1)
         for i in range(len(self.slm.pupils)):
@@ -2453,6 +2454,7 @@ class SLMWindow(QMainWindow):
                 for p, pp in zip(self.slm.pupils, self.pupilPanels):
                     p.set_enabled(not p.enabled, update=False)
                     pp.refresh_gui['pupil']()
+                    assert(pp.pupil == p)
                 self.slm.refresh_hologram()
             return f
 
