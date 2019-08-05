@@ -1815,7 +1815,14 @@ class PupilPositionControl:
             self.pars['gain_rho']
             ])
 
-        self.ndof = (self.gains != 0.).sum()
+        try:
+            enabled = self.pars['enabled']
+        except KeyError:
+            enabled = 1
+        if enabled:
+            self.ndof = (self.gains != 0.).sum()
+        else:
+            self.ndof = 0
 
         self.z0 = self.pupil.aberration.flatten()
 
