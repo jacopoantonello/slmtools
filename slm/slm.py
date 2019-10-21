@@ -788,6 +788,7 @@ class MatplotlibWindow(QFrame):
             self.circ_ind = self.slmwindow.pupilsTab.currentIndex()
             if self.circ:
                 self.circ[0].remove()
+                self.circ = None
             p = self.slm.pupils[self.circ_ind]
             ll = np.linspace(0, 2*np.pi, 50)
             self.circ = self.ax.plot(
@@ -812,6 +813,7 @@ class MatplotlibWindow(QFrame):
             self.shape = self.slm.gray.shape
         if self.circ and len(self.slm.pupils) == 1:
             self.circ[0].remove()
+            self.circ = None
         elif self.check_circ() and len(self.slm.pupils) != 1:
             self.refresh_circle()
 
