@@ -279,28 +279,10 @@ class Pupil():
             self.align_grid = 0
 
     def make_grating(self):
-        Ny = self.holo.hologram_geometry[3]
-        Nx = self.holo.hologram_geometry[2]
+        xv = self.xv
+        yv = self.yv
         coeffs = self.angle_xy
-        rho = self.rho
-
-        def span(N, lin):
-            small = np.arange(0, 2*rho)
-            Ntile = int(np.ceil(N/small.size))
-            small *= 2*np.pi/(2*rho)
-            extended = np.tile(small, Ntile)
-            zeroind = np.abs(lin).argmin()
-            Nroll = zeroind % small.size
-            extended = np.roll(extended, Nroll)
-            return extended[:N]
-
-        if np.nonzero(coeffs)[0].size == 0:
-            grating = np.zeros((Ny, Nx))
-        else:
-            dy = span(Ny, self.yv[:, 0]).reshape(-1, 1)
-            dx = span(Nx, self.xv[0, :]).reshape(1, -1)
-            grating = coeffs[0]*dx + coeffs[1]*dy
-
+        grating = np.pi*(coeffs[0]*xv + coeffs[1]*yv)
         grating[self.mask] = 0
         self.grating = grating
 
