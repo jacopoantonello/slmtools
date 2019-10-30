@@ -779,7 +779,8 @@ class MatplotlibWindow(QFrame):
             else:
                 return 0
 
-    def refresh_circle(self):
+    def refresh_circle(self, index, draw=True):
+        # ignore index for mpl call back
         if self.check_circ():
             self.circ_ind = self.slmwindow.pupilsTab.currentIndex()
             if self.circ:
@@ -794,11 +795,13 @@ class MatplotlibWindow(QFrame):
             self.circ_rho = p.rho
             self.circ_xy = np.array(p.xy, copy=1)
             self.circ_geometry = np.array(self.slm.hologram_geometry, copy=1)
-            self.canvas.draw()
+            if draw:
+                self.canvas.draw()
 
     def update_array(self):
         if self.slm.gray is None:
             return
+
         if self.im is None or self.slm.gray.shape != self.shape:
             if self.im:
                 self.ax.clear()
@@ -806,14 +809,18 @@ class MatplotlibWindow(QFrame):
             self.im = self.ax.imshow(
                 self.slm.gray, cmap="gray", vmin=0, vmax=0xff)
             self.ax.axis("off")
+            self.xlim = self.ax.get_xlim()
+            self.ylim = self.ax.get_ylim()
             self.shape = self.slm.gray.shape
         if self.circ and len(self.slm.pupils) == 1:
             self.circ[0].remove()
             self.circ = None
         elif self.check_circ() and len(self.slm.pupils) != 1:
-            self.refresh_circle()
+            self.refresh_circle(0, draw=False)
 
         self.im.set_data(self.slm.gray)
+        self.ax.set_xlim(self.xlim)
+        self.ax.set_ylim(self.ylim)
         self.canvas.draw()
 
 
