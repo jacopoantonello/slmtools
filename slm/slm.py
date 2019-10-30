@@ -2447,9 +2447,11 @@ class SLMWindow(QMainWindow):
 
         def fp():
             def f():
+                ind = self.pupilsTab.count()
                 p = self.slm.add_pupil()
                 pp = PupilPanel(p, self.pupilsTab, self)
                 self.pupilPanels.append(pp)
+                self.pupilsTab.setCurrentIndex(ind)
             return f
 
         def fm():
