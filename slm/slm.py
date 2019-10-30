@@ -177,7 +177,7 @@ class Pupil():
             def make_dd(rho, n, x):
                 scale = (n/2)/rho
                 dd = np.linspace(-scale, scale, n)
-                dd -= np.diff(dd)[0]*x
+                dd -= (dd[1] - dd[0])*x
                 return dd
 
             dd1 = make_dd(
@@ -282,27 +282,23 @@ class Pupil():
         Ny = self.holo.hologram_geometry[3]
         Nx = self.holo.hologram_geometry[2]
         coeffs = self.angle_xy
-        x0 = self.xy[0]
-        y0 = self.xy[1]
         rho = self.rho
 
-        def span(N, off):
+        def span(N, lin):
             small = np.arange(0, 2*rho)
-            Nroll = int(np.floor(off))
             Ntile = int(np.ceil(N/small.size))
-            small = np.roll(small, Nroll)
             small *= 2*np.pi/(2*rho)
             extended = np.tile(small, Ntile)
-            pv = np.arange(-Ntile//2, Ntile//2).reshape(-1, 1)
-            pv = pv*(2*np.pi)*np.ones((1, small.size))
-            pv = np.roll(pv, Nroll)
-            return extended[:N] + pv.ravel()[:N]
+            zeroind = np.abs(lin).argmin()
+            Nroll = zeroind % small.size
+            extended = np.roll(extended, Nroll)
+            return extended[:N]
 
         if np.nonzero(coeffs)[0].size == 0:
             grating = np.zeros((Ny, Nx))
         else:
-            dy = span(Ny, y0).reshape(-1, 1)
-            dx = span(Nx, x0).reshape(1, -1)
+            dy = span(Ny, self.yv[:, 0]).reshape(-1, 1)
+            dx = span(Nx, self.xv[0, :]).reshape(1, -1)
             grating = coeffs[0]*dx + coeffs[1]*dy
 
         grating[self.mask] = 0
