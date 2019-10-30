@@ -183,8 +183,7 @@ class Pupil():
             dd1 = make_dd(
                 self.rho, self.holo.hologram_geometry[2], self.xy[0])
             dd2 = make_dd(
-                self.rho,
-                self.holo.hologram_geometry[3], self.xy[1])
+                self.rho, self.holo.hologram_geometry[3], self.xy[1])
             self.xv, self.yv = np.meshgrid(dd1, dd2)
             dirty = True
 
@@ -607,16 +606,13 @@ class SLM(QDialog):
         Nx = self.hologram_geometry[2]
         coeffs = self.grating_coeffs
 
-        def span(N):
-            return (np.arange(0, N) - N//2)/N*(2*np.pi) - np.pi
-
         if np.nonzero(coeffs)[0].size == 0:
             grating = np.zeros((Ny, Nx))
         else:
-            dy = span(Ny).reshape(-1, 1)
-            dx = span(Nx).reshape(1, -1)
-
-            grating = coeffs[0]*dx + coeffs[1]*dy
+            dx = np.arange(0, Nx)/Nx
+            dy = np.arange(0, Ny)/Ny
+            xx, yy = np.meshgrid(dx, dy)
+            grating = 2*np.pi*(coeffs[0]*xx + coeffs[1]*yy)
 
         self.grating = grating
 
