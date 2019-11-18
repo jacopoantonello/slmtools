@@ -28,9 +28,6 @@ from matplotlib.backends.backend_qt5agg import FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
 from matplotlib.figure import Figure
 
-from qtconsole.rich_jupyter_widget import RichJupyterWidget
-from qtconsole.inprocess import QtInProcessKernelManager
-
 from slm import version
 from zernike.czernike import RZern
 
@@ -414,7 +411,7 @@ class SLM(QDialog):
         self.log = logging.getLogger(self.__class__.__name__)
         self.flat_file = None
         self.flat = None
-        self.flat_on = 0.0
+        self.flat_on = 0
 
         self.arr = None
         self.qim = None
@@ -1214,7 +1211,7 @@ class PupilPanel(QFrame):
         slider1.setFocusPolicy(Qt.StrongFocus)
         slider1.setTickPosition(QSlider.TicksBothSides)
         slider1.setTickInterval(20)
-        slider1.setSingleStep(0.1)
+        slider1.setSingleStep(1)
         slider1.setValue(int(100*self.pupil.mask3d_radius))
         spinbox1 = QDoubleSpinBox()
         spinbox1.setRange(0.0, 1.0)
@@ -1234,7 +1231,7 @@ class PupilPanel(QFrame):
         slider2.setFocusPolicy(Qt.StrongFocus)
         slider2.setTickPosition(QSlider.TicksBothSides)
         slider2.setTickInterval(40)
-        slider2.setSingleStep(0.1)
+        slider2.setSingleStep(1)
         slider2.setValue(int(100*self.pupil.mask3d_height))
         spinbox2 = QDoubleSpinBox()
         spinbox2.setRange(0.0, 2.0)
@@ -2521,49 +2518,6 @@ class SLMWindow(QMainWindow):
         self.sig_unlock.emit()
 
 
-class Console(QDialog):
-
-    def __init__(self, slm, control):
-        super().__init__(parent=None)
-
-        self.slm = slm
-        self.control = control
-
-        self.setWindowTitle('console ' + version.__version__)
-        QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
-
-        kernel_manager = QtInProcessKernelManager()
-        kernel_manager.start_kernel()
-        kernel = kernel_manager.kernel
-
-        kernel_client = kernel_manager.client()
-        kernel_client.start_channels()
-        kernel_client.namespace = self
-
-        def stop():
-            control.close()
-            kernel_client.stop_channels()
-            kernel_manager.shutdown_kernel()
-            self.close()
-
-        layout = QVBoxLayout(self)
-        widget = RichJupyterWidget(parent=self)
-        layout.addWidget(widget)
-        widget.kernel_manager = kernel_manager
-        widget.kernel_client = kernel_client
-        widget.exit_requested.connect(stop)
-        ipython_widget = widget
-        ipython_widget.show()
-        kernel.shell.push({
-            'plt': plt,
-            'np': np,
-            'slm': slm,
-            'control': control,
-            'widget': widget,
-            'kernel': kernel,
-            'parent': self})
-
-
 def add_arguments(parser):
     parser.add_argument(
         '--slm-parameters', type=argparse.FileType('r'), default=None,
@@ -2622,9 +2576,5 @@ if __name__ == '__main__':
     if args.load:
         d = json.loads(args.load.read())
         cwin.load_parameters(d)
-
-    if args.console:
-        console = Console(slm, cwin)
-        console.show()
 
     sys.exit(app.exec_())
