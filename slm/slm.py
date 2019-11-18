@@ -2087,8 +2087,9 @@ class SLMWindow(QMainWindow):
     sig_lock = pyqtSignal()
     sig_unlock = pyqtSignal()
 
-    def __init__(self, slm, pars={}):
+    def __init__(self, app, slm, pars={}):
         super().__init__(parent=None)
+        self.app = app
         self.pupilPanels = []
         self.refresh_gui = {}
         self.can_close = True
@@ -2549,7 +2550,7 @@ def new_slm_window(app, args, pars={}):
     slm = SLM()
     slm.show()
 
-    cwin = SLMWindow(slm)
+    cwin = SLMWindow(app, slm)
     cwin.show()
 
     # argparse specified parameters can override pars
@@ -2597,6 +2598,11 @@ class Console(QDialog):
                 self.close()
             return f
 
+        def draw():
+            def f():
+                self.slmwin.app.processEvents()
+            return f
+
         self.stop = stop()
         widget.exit_requested.connect(stop)
 
@@ -2605,6 +2611,7 @@ class Console(QDialog):
             'np': np,
             'slmwin': self.slmwin,
             'slm': self.slmwin.slm,
+            'draw': draw(),
             'kernel': kernel,
             'parent': self})
 
@@ -2639,7 +2646,7 @@ if __name__ == '__main__':
     slm = SLM()
     slm.show()
 
-    cwin = SLMWindow(slm)
+    cwin = SLMWindow(app, slm)
     cwin.show()
 
     if args.load:
