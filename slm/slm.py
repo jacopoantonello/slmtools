@@ -14,6 +14,9 @@ from datetime import datetime
 from math import sqrt
 from copy import deepcopy
 
+from qtconsole.rich_jupyter_widget import RichJupyterWidget
+from qtconsole.inprocess import QtInProcessKernelManager
+
 from PyQt5.QtCore import Qt, QMutex, pyqtSignal
 from PyQt5.QtGui import (
     QImage, QPainter, QDoubleValidator, QIntValidator, QKeySequence)
@@ -2224,11 +2227,13 @@ class SLMWindow(QMainWindow):
     def make_file_tab(self):
         """Rewriting the file tab to facilitate loading of 2-pupil files"""
         g = QGroupBox('File')
-        load = QPushButton('load')
-        save = QPushButton('save')
+        bload = QPushButton('load')
+        bsave = QPushButton('save')
+        bconsole = QPushButton('console')
         l1 = QGridLayout()
-        l1.addWidget(load, 0, 1)
-        l1.addWidget(save, 0, 0)
+        l1.addWidget(bsave, 0, 0)
+        l1.addWidget(bload, 0, 1)
+        l1.addWidget(bconsole, 0, 2)
         g.setLayout(l1)
 
         def helper_load():
@@ -2265,8 +2270,24 @@ class SLMWindow(QMainWindow):
                             f'Failed to write {fdiag}: {str(ex)}')
             return myf1
 
-        load.clicked.connect(helper_load())
-        save.clicked.connect(helper_save())
+        def helper_console():
+            def end():
+                def f(t):
+                    self.sig_release.emit(())
+                    self.unlock_gui()
+                return f
+
+            def start(t):
+                self.lock_gui()
+                console = Console(self)
+                console.sig_close_console.connect(end())
+                console.show()
+
+            return start
+
+        bload.clicked.connect(helper_load())
+        bsave.clicked.connect(helper_save())
+        bconsole.clicked.connect(helper_console())
         return g
 
     def load_parameters(self, d):
@@ -2540,6 +2561,56 @@ def new_slm_window(app, args, pars={}):
     cwin.load_parameters(pars)
 
     return cwin
+
+
+class Console(QDialog):
+    sig_close_console = pyqtSignal(tuple)
+
+    def __init__(self, slmwin):
+        super().__init__(None)
+        self.slmwin = slmwin
+
+        self.setWindowTitle('SLM console ' + version.__version__)
+        QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
+
+        kernel_manager = QtInProcessKernelManager()
+        kernel_manager.start_kernel()
+        kernel = kernel_manager.kernel
+
+        kernel_client = kernel_manager.client()
+        kernel_client.start_channels()
+        kernel_client.namespace = self
+
+        layout = QVBoxLayout(self)
+        widget = RichJupyterWidget(parent=self)
+        layout.addWidget(widget)
+        widget.kernel_manager = kernel_manager
+        widget.kernel_client = kernel_client
+        ipython_widget = widget
+        ipython_widget.show()
+
+        def stop():
+            def f():
+                self.sig_close_console.emit((None,))
+                kernel_client.stop_channels()
+                kernel_manager.shutdown_kernel()
+                self.close()
+            return f
+
+        self.stop = stop()
+        widget.exit_requested.connect(stop)
+
+        kernel.shell.push({
+            'plt': plt,
+            'np': np,
+            'slmwin': self.slmwin,
+            'slm': self.slmwin.slm,
+            'kernel': kernel,
+            'parent': self})
+
+    def closeEvent(self, event):
+        self.stop()
+        event.accept()
 
 
 if __name__ == '__main__':
