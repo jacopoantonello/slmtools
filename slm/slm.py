@@ -2549,8 +2549,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='SLM control',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--dump', action='store_true')
-    parser.add_argument('--console', action='store_true')
     parser.add_argument('--no-file-log', action='store_true')
     parser.add_argument('--file-log', action='store_false', dest='no_file_log')
     parser.set_defaults(no_file_log=True)
