@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import json
 import argparse
 import logging
+import traceback
 
 from time import time
 from datetime import datetime
@@ -24,7 +25,7 @@ from PyQt5.QtWidgets import (
     QDialog, QLabel, QLineEdit, QPushButton, QComboBox, QGroupBox,
     QGridLayout, QCheckBox, QVBoxLayout, QApplication, QShortcut,
     QSlider, QDoubleSpinBox, QWidget, QFileDialog, QScrollArea,
-    QMessageBox, QTabWidget, QFrame, QSplitter, QMainWindow,
+    QErrorMessage, QTabWidget, QFrame, QSplitter, QMainWindow,
     )
 
 from matplotlib.backends.backend_qt5agg import FigureCanvas
@@ -759,7 +760,7 @@ class MatplotlibWindow(QFrame):
 
     def refresh_circle(self, index, draw=True):
         # ignore index for mpl call back
-        if self.check_circ():
+        if self.check_circ() and len(self.slm.pupils) > 1:
             self.circ_ind = self.slmwindow.pupilsTab.currentIndex()
             if self.circ:
                 self.circ[0].remove()
@@ -2243,13 +2244,18 @@ class SLMWindow(QMainWindow):
                     self, 'Load SLM parameters',
                     filter='JSON (*.json);;All Files (*)')
                 if fdiag:
+                    bk = self.save_parameters()
                     try:
                         with open(fdiag, 'r') as f:
                             self.load_parameters(json.load(f))
                     except Exception as ex:
-                        QMessageBox.information(
-                            self, 'Error',
-                            f'Failed to load {fdiag}: {str(ex)}')
+                        self.load_parameters(bk)
+                        em = QErrorMessage()
+                        em.showMessage(
+                            f'Failed to load {fdiag}: {str(ex)}<br><br>' +
+                            traceback.format_exc().replace(
+                                '\r', '').replace('\n', '<br>'))
+                        em.exec_()
             return myf1
 
         def helper_save():
@@ -2266,9 +2272,12 @@ class SLMWindow(QMainWindow):
                                 self.save_parameters(), f,
                                 sort_keys=True, indent=4)
                     except Exception as ex:
-                        QMessageBox.information(
-                            self, 'Error',
-                            f'Failed to write {fdiag}: {str(ex)}')
+                        em = QErrorMessage()
+                        em.showMessage(
+                            f'Failed to write {fdiag}: {str(ex)}<br><br>' +
+                            traceback.format_exc().replace(
+                                '\r', '').replace('\n', '<br>'))
+                        em.exec_()
             return myf1
 
         def helper_console():
