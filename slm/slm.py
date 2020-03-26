@@ -14,6 +14,7 @@ from time import time
 from datetime import datetime
 from math import sqrt
 from copy import deepcopy
+from matplotlib import ticker
 
 from qtconsole.rich_jupyter_widget import RichJupyterWidget
 from qtconsole.inprocess import QtInProcessKernelManager
@@ -635,70 +636,57 @@ class SLM(QDialog):
             qp.end()
 
 
-class PhaseDisplay(QWidget):
+class PhaseDisplay(QFrame):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, n, parent=None):
+        super().__init__(parent)
 
+        self.siz1 = 40
         self.dirty = False
-        self.size = [0, 0]
-        self.phase = None
-        self.arr = None
-        self.qim = None
         self.rzern = None
 
-        self.setMinimumWidth(200)
-        self.setMinimumHeight(200)
+        self.setMaximumWidth(200)
+        self.setMaximumHeight(200)
 
-    def update_phase(self, n, z):
+        self.figure = Figure()
+        self.ax = self.figure.add_subplot(111)
+        self.canvas = FigureCanvas(self.figure)
+        layout = QGridLayout()
+        layout.addWidget(self.canvas)
+        self.setLayout(layout)
+        self.update_phase(n, None)
+        self.im = self.ax.imshow(self.phi, origin='lower')
+        self.ax.axis('off')
+        self.cb = self.ax.figure.colorbar(
+            self.im, ax=self.ax, orientation='horizontal')
+        self.cb.locator = ticker.MaxNLocator(nbins=3)
+        self.cb.update_ticks()
+
+    def update_phase(self, n, z, redraw=False):
         if self.rzern is None or self.rzern.n != n:
             rzern = RZern(n)
-            dd = np.linspace(-1, 1, 100)
+            dd = np.linspace(-1, 1, self.siz1)
             xv, yv = np.meshgrid(dd, dd)
             rzern.make_cart_grid(xv, yv)
             self.rzern = rzern
-        phi = self.rzern.eval_grid(z).reshape((100, 100), order='F')
-        self.phi = phi
+        if z is None:
+            z = np.zeros(self.rzern.nk)
+        self.phi = self.rzern.eval_grid(z).reshape(
+                (self.siz1, self.siz1), order='F')
+        inner = self.phi[np.isfinite(self.phi)]
+        self.min1 = inner.min()
+        self.max1 = inner.max()
         self.dirty = True
+        if redraw:
+            self.redraw()
 
-    def resizeEvent(self, event):
-        self.size[0] = event.size().width()
-        self.size[1] = event.size().height()
-        self.minsize = min(self.size)
-
-        self.arr = np.ndarray(
-            shape=(self.minsize, self.minsize), dtype=np.uint32)
-        self.qim = QImage(
-            self.arr.data, self.arr.shape[1], self.arr.shape[0],
-            QImage.Format_RGB32)
-
-    def paintEvent(self, e):
-        if self.qim is not None:
-            if self.dirty:
-                fig10 = plt.figure(
-                    10, figsize=(self.minsize/100, self.minsize/100), dpi=100)
-                ax = fig10.gca()
-                ax.axis('off')
-                plt.imshow(self.phi, origin='lower')
-                cb = plt.colorbar()
-                cb.ax.tick_params(labelsize=6)
-                fig10.canvas.draw()
-                # size = fig10.canvas.get_width_height()
-                # assert(size[0] == self.arr.shape[0])
-                # assert(size[1] == self.arr.shape[1])
-                drawn = np.frombuffer(
-                            fig10.canvas.tostring_rgb(),
-                            dtype=np.uint8).reshape(
-                                (self.minsize, self.minsize, 3))
-                self.arr[:] = (
-                    drawn[:, :, 0]*0x01 +
-                    drawn[:, :, 1]*0x0100 +
-                    drawn[:, :, 2]*0x010000)
-                plt.close(fig10)
-            qp = QPainter()
-            qp.begin(self)
-            qp.drawImage(0, 0, self.qim)
-            qp.end()
+    def redraw(self):
+        if self.phi is None:
+            return
+        if self.dirty:
+            self.im.set_data(self.phi)
+            self.im.set_clim(self.min1, self.max1)
+            self.canvas.draw()
 
 
 class MatplotlibWindow(QFrame):
@@ -1312,7 +1300,7 @@ class PupilPanel(QFrame):
 
     def make_phase_tab(self):
         g = QGroupBox('Phase')
-        phase_display = PhaseDisplay()
+        phase_display = PhaseDisplay(self.pupil.rzern.n)
         l1 = QGridLayout()
         l1.addWidget(phase_display, 0, 0)
         g.setLayout(l1)
@@ -1361,8 +1349,7 @@ class PupilPanel(QFrame):
                 self.pupil.set_aberration(self.pupil.aberration)
 
                 self.phase_display.update_phase(
-                    self.pupil.rzern.n, self.pupil.aberration)
-                self.phase_display.update()
+                    self.pupil.rzern.n, self.pupil.aberration, redraw=True)
             return f
 
         def make_hand_lab(le, i):
@@ -1451,8 +1438,7 @@ class PupilPanel(QFrame):
             self.pupil.aberration[:] = 0
             self.pupil.set_aberration(self.pupil.aberration)
             self.phase_display.update_phase(
-                self.pupil.rzern.n, self.pupil.aberration)
-            self.phase_display.update()
+                self.pupil.rzern.n, self.pupil.aberration, redraw=True)
             self.update_zernike_rows(0)
             self.update_zernike_rows()
 
@@ -1472,13 +1458,11 @@ class PupilPanel(QFrame):
 
             self.update_zernike_rows()
             self.phase_display.update_phase(
-                self.pupil.rzern.n, self.pupil.aberration)
-            self.phase_display.update()
+                self.pupil.rzern.n, self.pupil.aberration, redraw=True)
             lezm.setText(str(self.pupil.rzern.n))
 
         self.phase_display.update_phase(
-            self.pupil.rzern.n, self.pupil.aberration)
-        self.update_zernike_rows()
+            self.pupil.rzern.n, self.pupil.aberration, redraw=True)
 
         reset.clicked.connect(reset_fun)
         lezm.editingFinished.connect(change_radial)
@@ -1490,11 +1474,11 @@ class PupilPanel(QFrame):
                 self.update_zernike_rows(0)
                 self.update_zernike_rows()
                 self.phase_display.update_phase(
-                    self.pupil.rzern.n, self.pupil.aberration)
-                self.phase_display.update()
+                    self.pupil.rzern.n, self.pupil.aberration, redraw=True)
             return f
 
         self.refresh_gui['aberration'] = f()
+        reset_fun()
 
     def make_grating_tab(self):
         """Position tab is meant to help positionning the phase mask
