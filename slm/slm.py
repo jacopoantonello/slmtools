@@ -2301,7 +2301,7 @@ class SLMWindow(QMainWindow):
         return g
 
     def load_parameters(self, d):
-        self.setGeometry(*d['controlwindow']['geometry'])
+        # self.setGeometry(*d['controlwindow']['geometry'])
         self.slm.load_parameters(d['slm'])
         self.pupilsTab.clear()
         self.pupilPanels.clear()
