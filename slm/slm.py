@@ -34,7 +34,7 @@ from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
 from matplotlib.figure import Figure
 
 from slm import version
-from zernike.czernike import RZern
+from zernike import RZern
 
 
 """SLM - spatial light modulator (SLM) controller.
