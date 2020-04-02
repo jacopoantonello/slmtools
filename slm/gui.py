@@ -77,6 +77,7 @@ def transform_pupil(rzern, alpha=0., flipx=False, flipy=False):
 
 
 class Pupil():
+    "A pupil within the SLM window."
 
     def_pars = {
         'name': 'pupil',
@@ -398,6 +399,7 @@ class Pupil():
 
 
 class SLM(QDialog):
+    "Hologram displayed in the SLM window."
 
     refreshHologramSignal = pyqtSignal()
 
@@ -634,6 +636,11 @@ class SLM(QDialog):
             qp.begin(self)
             qp.drawImage(0, 0, self.qim)
             qp.end()
+
+    def __str__(self):
+        return (
+            f'<slm.gui.{self.__class__.__name__} ' +
+            f'pupils={str(len(self.pupils))}>')
 
 
 class PhaseDisplay(QFrame):
@@ -1590,7 +1597,7 @@ class Zernike1Control:
 
     def __str__(self):
         return (
-            f'<slm.{self.__class__.__name__} ' +
+            f'<slm.gui.{self.__class__.__name__} ' +
             f'pupil={str(self.pars["pupil_index"])} ' +
             f'ndof={self.ndof} indices={self.indices}>')
 
@@ -1762,7 +1769,7 @@ class PupilPositionControl:
 
     def __str__(self):
         return (
-            f'<slm.{self.__class__.__name__} ' +
+            f'<slm.gui.{self.__class__.__name__} ' +
             f'pupil={str(self.pars["pupil_index"])} ' +
             f'ndof={self.ndof}>')
 
@@ -2066,6 +2073,7 @@ class OptionsPanel(QFrame):
 
 
 class SLMWindow(QMainWindow):
+    "Dialog to control the SLM hologram."
 
     sig_acquire = pyqtSignal(tuple)
     sig_release = pyqtSignal(tuple)
@@ -2186,7 +2194,7 @@ class SLMWindow(QMainWindow):
 
     def __str__(self):
         return (
-            f'<slm.{self.__class__.__name__} ' +
+            f'<slm.gui.{self.__class__.__name__} ' +
             f'pupils={str(len(self.slm.pupils))}>')
 
     def make_control_options(self):
@@ -2569,7 +2577,9 @@ class Console(QDialog):
 
         kernel_manager = QtInProcessKernelManager()
         kernel_manager.start_kernel()
-        kernel = kernel_manager.kernel
+        kernel_manager.kernel.shell.banner2 = (
+            "Use 'run -i' to run an external script and " +
+            "'draw()' to update the hologram.\n")
 
         kernel_client = kernel_manager.client()
         kernel_client.start_channels()
@@ -2580,33 +2590,34 @@ class Console(QDialog):
         layout.addWidget(widget)
         widget.kernel_manager = kernel_manager
         widget.kernel_client = kernel_client
-        ipython_widget = widget
-        ipython_widget.show()
+        self.show()
 
         def stop():
             def f():
+                "Close the console"
                 self.sig_close_console.emit((None,))
                 kernel_client.stop_channels()
                 kernel_manager.shutdown_kernel()
-                self.close()
             return f
 
         def draw():
             def f():
+                "Update the SLM hologram"
                 self.slmwin.app.processEvents()
             return f
 
         self.stop = stop()
         widget.exit_requested.connect(stop)
 
-        kernel.shell.push({
-            'plt': plt,
+        kernel_manager.kernel.shell.push({
             'np': np,
+            'plt': plt,
             'slmwin': self.slmwin,
             'slm': self.slmwin.slm,
             'draw': draw(),
-            'kernel': kernel,
-            'parent': self})
+            'exit': self.close,
+            'quit': self.close,
+            })
 
     def closeEvent(self, event):
         self.stop()
