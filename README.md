@@ -15,9 +15,10 @@ Python code to use a spatial light modulator (SLM).
 
 ## Installation
 
-The **easiest** way to install `slmtools` is to first install [Anaconda for Python
-3](https://www.anaconda.com/download). After that, open an `Anaconda Prompt`,
-type `pip install --user slmtools` and hit enter to install `slmtools`.
+The **easiest** way to install `slmtools` is to first install [Anaconda for
+Python 3](https://www.anaconda.com/download). After that, open an `Anaconda
+Prompt`, type `pip install --user --upgrade slmtools` and hit enter to install
+`slmtools`.
 
 To start up the GUI, open `Anaconda Prompt`, type `python -m slmtools.gui` and
 hit enter.
