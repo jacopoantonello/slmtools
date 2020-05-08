@@ -54,6 +54,7 @@ setup(
     description='Spatial light modulator in Python',
     long_description=long_description,
     long_description_content_type='text/markdown',
+    url='https://github.com/jacopoantonello/slmtools',
     maintainer='The SLM Project Developers',
     license='GPLv3+',
     classifiers=[
