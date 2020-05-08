@@ -6,4 +6,4 @@ __pycache__/
 *.json
 .directory
 /.eggs
-/slm/version.py
+/slmtools/version.py
