@@ -1491,7 +1491,8 @@ class PupilPanel(QFrame):
             return f
 
         self.refresh_gui['aberration'] = f()
-        reset_fun()
+        self.update_zernike_rows(0)
+        self.update_zernike_rows()
 
     def make_grating_tab(self):
         """Position tab is meant to help positionning the phase mask
