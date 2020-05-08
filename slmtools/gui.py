@@ -1,42 +1,37 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import argparse
+import json
+import logging
 import os
 import sys
-import numpy as np
-import matplotlib.pyplot as plt
-import json
-import argparse
-import logging
 import traceback
-
-from time import time
+from copy import deepcopy
 from datetime import datetime
 from math import sqrt
-from copy import deepcopy
+from time import time
+
+import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib import ticker
-
-from qtconsole.rich_jupyter_widget import RichJupyterWidget
-from qtconsole.inprocess import QtInProcessKernelManager
-
-from PyQt5.QtCore import Qt, QMutex, pyqtSignal
-from PyQt5.QtGui import (
-    QImage, QPainter, QDoubleValidator, QIntValidator, QKeySequence)
-from PyQt5.QtWidgets import (
-    QDialog, QLabel, QLineEdit, QPushButton, QComboBox, QGroupBox,
-    QGridLayout, QCheckBox, QVBoxLayout, QApplication, QShortcut,
-    QSlider, QDoubleSpinBox, QWidget, QFileDialog, QScrollArea,
-    QErrorMessage, QTabWidget, QFrame, QSplitter, QMainWindow,
-    )
-
-from matplotlib.backends.backend_qt5agg import FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
+from matplotlib.backends.backend_qt5agg import (FigureCanvas,
+                                                NavigationToolbar2QT)
 from matplotlib.figure import Figure
-
-from slm import version
+from PyQt5.QtCore import QMutex, Qt, pyqtSignal
+from PyQt5.QtGui import (QDoubleValidator, QImage, QIntValidator, QKeySequence,
+                         QPainter)
+from PyQt5.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
+                             QDoubleSpinBox, QErrorMessage, QFileDialog,
+                             QFrame, QGridLayout, QGroupBox, QLabel, QLineEdit,
+                             QMainWindow, QPushButton, QScrollArea, QShortcut,
+                             QSlider, QSplitter, QTabWidget, QVBoxLayout,
+                             QWidget)
 from zernike import RZern
 
-
+from qtconsole.inprocess import QtInProcessKernelManager
+from qtconsole.rich_jupyter_widget import RichJupyterWidget
+from slm import version
 """SLM - spatial light modulator (SLM) controller.
 """
 
@@ -159,46 +154,42 @@ class Pupil():
 
         if not self.enabled:
             if self.rzern is None:
-                nnew = int((-3 + sqrt(9 - 4*2*(1 - self.aberration.size)))/2)
+                nnew = int(
+                    (-3 + sqrt(9 - 4 * 2 * (1 - self.aberration.size))) / 2)
                 self.rzern = RZern(nnew)
-            self.mask = np.ones((
-                self.holo.hologram_geometry[3],
-                self.holo.hologram_geometry[2]), dtype=np.bool)
+            self.mask = np.ones((self.holo.hologram_geometry[3],
+                                 self.holo.hologram_geometry[2]),
+                                dtype=np.bool)
             self.log.info(f'refresh_pupil {self.name} END')
             return 0
 
         dirty = False
-        if (
-                self.xv is None or
-                self.yv is None or
-                self.xv.shape[0] != self.holo.hologram_geometry[3] or
-                self.xv.shape[1] != self.holo.hologram_geometry[2] or
-                self.mask is None):
+        if (self.xv is None or self.yv is None
+                or self.xv.shape[0] != self.holo.hologram_geometry[3]
+                or self.xv.shape[1] != self.holo.hologram_geometry[2]
+                or self.mask is None):
 
             self.log.debug(f'refresh_pupil {self.name} allocating Zernike')
 
             def make_dd(rho, n, x):
-                scale = (n/2)/rho
+                scale = (n / 2) / rho
                 dd = np.linspace(-scale, scale, n)
-                dd -= (dd[1] - dd[0])*x
+                dd -= (dd[1] - dd[0]) * x
                 return dd
 
-            dd1 = make_dd(
-                self.rho, self.holo.hologram_geometry[2], self.xy[0])
-            dd2 = make_dd(
-                self.rho, self.holo.hologram_geometry[3], self.xy[1])
+            dd1 = make_dd(self.rho, self.holo.hologram_geometry[2], self.xy[0])
+            dd2 = make_dd(self.rho, self.holo.hologram_geometry[3], self.xy[1])
             self.xv, self.yv = np.meshgrid(dd1, dd2)
             dirty = True
 
-        if (
-                dirty or
-                self.rzern is None or
-                self.aberration.size != self.rzern.nk):
-            nnew = int(np.ceil(
-                (-3 + sqrt(9 - 4*2*(1 - self.aberration.size)))/2))
+        if (dirty or self.rzern is None
+                or self.aberration.size != self.rzern.nk):
+            nnew = int(
+                np.ceil(
+                    (-3 + sqrt(9 - 4 * 2 * (1 - self.aberration.size))) / 2))
             self.rzern = RZern(nnew)
-            self.R = transform_pupil(
-                self.rzern, self.rotate, self.flipx, self.flipy)
+            self.R = transform_pupil(self.rzern, self.rotate, self.flipx,
+                                     self.flipy)
             self.rzern.make_cart_grid(self.xv, self.yv)
             self.theta = np.arctan2(self.yv, self.xv)
             self.rr = np.sqrt(self.xv**2 + self.yv**2)
@@ -209,55 +200,48 @@ class Pupil():
                 self.aberration = tmp
 
         self.make_phi2d()
-        assert(np.all(np.isfinite(self.phi2d)))
+        assert (np.all(np.isfinite(self.phi2d)))
         self.make_phi3d()
-        assert(np.all(np.isfinite(self.phi3d)))
+        assert (np.all(np.isfinite(self.phi3d)))
         self.make_phi()
-        assert(np.all(np.isfinite(self.phi)))
+        assert (np.all(np.isfinite(self.phi)))
         self.make_grating()
-        assert(np.all(np.isfinite(self.grating)))
+        assert (np.all(np.isfinite(self.grating)))
         self.make_align_grid()
-        assert(np.all(np.isfinite(self.align_grid)))
+        assert (np.all(np.isfinite(self.align_grid)))
 
         def printout(t, x):
             if isinstance(x, np.ndarray):
-                self.log.debug(
-                    f'refresh_pupil {self.name} {t} ' +
-                    f'[{x.min():g}, {x.max():g}] {x.mean():g}')
+                self.log.debug(f'refresh_pupil {self.name} {t} ' +
+                               f'[{x.min():g}, {x.max():g}] {x.mean():g}')
             else:
-                self.log.debug(
-                    f'refresh_pupil {self.name} ' +
-                    str(t) + ' [0.0, 0.0] 0.0')
+                self.log.debug(f'refresh_pupil {self.name} ' + str(t) +
+                               ' [0.0, 0.0] 0.0')
 
         printout('phi', self.phi)
         printout('phi2d', self.phi2d)
         printout('phi3d', self.phi3d)
 
-        phase = (
-            self.phi +
-            self.mask2d_on*self.phi2d +
-            self.mask3d_on*self.phi3d +
-            self.grating +
-            self.align_grid
-            )
+        phase = (self.phi + self.mask2d_on * self.phi2d +
+                 self.mask3d_on * self.phi3d + self.grating + self.align_grid)
 
-        assert(np.all(phase[self.mask] == 0.))
+        assert (np.all(phase[self.mask] == 0.))
         self.log.info(f'refresh_pupil {self.name} END')
 
         return phase
 
     def make_phi2d(self):
         # [-pi, pi] principal branch
-        theta = (self.theta + np.pi)/(2*np.pi)
+        theta = (self.theta + np.pi) / (2 * np.pi)
         theta = np.power(theta, self.mask2d_mul)
-        phi2d = self.mask2d_sign*theta*(2*np.pi) - np.pi
+        phi2d = self.mask2d_sign * theta * (2 * np.pi) - np.pi
         phi2d[self.mask] = 0
         self.phi2d = phi2d
 
     def make_phi3d(self):
         # [-pi, pi] principal branch
         phi3d = np.zeros_like(self.rr)
-        phi3d[self.rr <= self.mask3d_radius] = self.mask3d_height*np.pi
+        phi3d[self.rr <= self.mask3d_radius] = self.mask3d_height * np.pi
         phi3d[self.rr >= 1] = 0
         # induce zero mean
         phi3d -= phi3d.mean()
@@ -268,13 +252,13 @@ class Pupil():
         if self.align_grid_on:
             pitch = self.align_grid_pitch
             grid = np.zeros_like(self.rr)
-            assert(len(self.rr.shape) == 2)
+            assert (len(self.rr.shape) == 2)
             for j in range(0, grid.shape[0], pitch):
                 slice1 = grid[j:j + pitch, :]
                 for i in range(grid.shape[1]):
                     for k in range(pitch):
-                        ind = (k + ((j // pitch) % 2)*pitch)
-                        slice1[:, ind::2*pitch] = np.pi
+                        ind = (k + ((j // pitch) % 2) * pitch)
+                        slice1[:, ind::2 * pitch] = np.pi
             grid[self.mask] = 0
             self.align_grid = grid
         else:
@@ -284,7 +268,7 @@ class Pupil():
         xv = self.xv
         yv = self.yv
         coeffs = self.angle_xy
-        grating = np.pi*(coeffs[0]*xv + coeffs[1]*yv)
+        grating = np.pi * (coeffs[0] * xv + coeffs[1] * yv)
         grating[self.mask] = 0
         self.grating = grating
 
@@ -293,9 +277,9 @@ class Pupil():
         a = np.dot(self.R, self.aberration)
         phi = np.pi + self.rzern.eval_grid(a)
         phi = np.ascontiguousarray(
-            phi.reshape((
-                self.holo.hologram_geometry[3],
-                self.holo.hologram_geometry[2]), order='F'))
+            phi.reshape((self.holo.hologram_geometry[3],
+                         self.holo.hologram_geometry[2]),
+                        order='F'))
         phi[self.mask] = 0
         self.phi = phi
 
@@ -381,7 +365,7 @@ class Pupil():
 
     def set_mask3d_radius(self, rho):
         if rho is None:
-            self.mask3d_radius = 0.6*self.rho
+            self.mask3d_radius = 0.6 * self.rho
         else:
             self.mask3d_radius = rho
         self.holo.refresh_hologram()
@@ -404,9 +388,9 @@ class SLM(QDialog):
     refreshHologramSignal = pyqtSignal()
 
     def __init__(self, pars={}):
-        super().__init__(
-            parent=None,
-            flags=Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        super().__init__(parent=None,
+                         flags=Qt.FramelessWindowHint
+                         | Qt.WindowStaysOnTopHint)
 
         self.setWindowTitle('SLM Hologram')
 
@@ -452,7 +436,7 @@ class SLM(QDialog):
             'flat_on': self.flat_on,
             'grating_coeffs': self.grating_coeffs,
             'pupils': [p.parameters2dict() for p in self.pupils],
-            }
+        }
         return d
 
     def dict2parameters(self, d):
@@ -487,73 +471,67 @@ class SLM(QDialog):
 
         # [0, 1]
         if self.flat_file is None:
-            self.flat = np.zeros(
-                shape=(self.hologram_geometry[3], self.hologram_geometry[2]))
+            self.flat = np.zeros(shape=(self.hologram_geometry[3],
+                                        self.hologram_geometry[2]))
         else:
             self.copy_flat_shape()
 
         self.setGeometry(*self.hologram_geometry)
-        self.setFixedSize(
-            self.hologram_geometry[2], self.hologram_geometry[3])
+        self.setFixedSize(self.hologram_geometry[2], self.hologram_geometry[3])
 
-        if (
-                self.arr is None or
-                self.qim is None or
-                self.arr.shape[0] != self.hologram_geometry[3] or
-                self.arr.shape[1] != self.hologram_geometry[2]):
+        if (self.arr is None or self.qim is None
+                or self.arr.shape[0] != self.hologram_geometry[3]
+                or self.arr.shape[1] != self.hologram_geometry[2]):
             self.log.info('refresh_hologram ALLOCATING arr & qim')
-            self.arr = np.zeros(
-                shape=(self.hologram_geometry[3], self.hologram_geometry[2]),
-                dtype=np.uint32)
-            self.qim = QImage(
-                self.arr.data, self.arr.shape[1], self.arr.shape[0],
-                QImage.Format_RGB32)
+            self.arr = np.zeros(shape=(self.hologram_geometry[3],
+                                       self.hologram_geometry[2]),
+                                dtype=np.uint32)
+            self.qim = QImage(self.arr.data, self.arr.shape[1],
+                              self.arr.shape[0], QImage.Format_RGB32)
 
         phase = 0
-        masks = np.zeros((
-            self.hologram_geometry[3], self.hologram_geometry[2]),
+        masks = np.zeros(
+            (self.hologram_geometry[3], self.hologram_geometry[2]),
             dtype=np.bool)
         for p in self.pupils:
             phase += p.refresh_pupil()
             masks = np.logical_or(masks, np.logical_not(p.mask))
-            assert(p.mask.shape == (
-                self.hologram_geometry[3],
-                self.hologram_geometry[2]))
-            assert(p.mask.dtype == np.bool)
+            assert (p.mask.shape == (self.hologram_geometry[3],
+                                     self.hologram_geometry[2]))
+            assert (p.mask.dtype == np.bool)
         masks = np.logical_not(masks)
 
         def printout(t, x):
             if isinstance(x, np.ndarray):
-                self.log.info(
-                    f'refresh_hologram {t} ' +
-                    f'[{x.min():g}, {x.max():g}] {x.mean():g}')
+                self.log.info(f'refresh_hologram {t} ' +
+                              f'[{x.min():g}, {x.max():g}] {x.mean():g}')
             else:
-                self.log.info(
-                    f'refresh_hologram {t} ' + str(t) + ' [0.0, 0.0] 0.0')
+                self.log.info(f'refresh_hologram {t} ' + str(t) +
+                              ' [0.0, 0.0] 0.0')
 
         if self.grating is None:
             self.make_grating()
 
         # [0, 1] waves
-        background = self.flat_on*self.flat
+        background = self.flat_on * self.flat
         # add background grating in waves
-        background[masks] += self.grating[masks]/(2*np.pi)
+        background[masks] += self.grating[masks] / (2 * np.pi)
         # [-pi, pi] principal branch rads (zero mean) -> waves
-        phase /= (2*np.pi)  # phase in waves
+        phase /= (2 * np.pi)  # phase in waves
         # all in waves
         gray = background + phase
         printout('gray', gray)
         gray -= np.floor(gray.min())
-        assert(gray.min() >= -1e-9)
+        assert (gray.min() >= -1e-9)
         gray *= self.wrap_value
         printout('gray', gray)
         gray %= self.wrap_value
         printout('gray', gray)
-        assert(gray.min() >= 0)
-        assert(gray.max() <= 255)
+        assert (gray.min() >= 0)
+        assert (gray.max() <= 255)
         gray = np.flipud(gray.astype(np.uint8))
         self.gray = gray
-        self.arr[:] = gray.astype(np.uint32)*0x010101
+        self.arr[:] = gray.astype(np.uint32) * 0x010101
 
         self.log.info(f'refresh_hologram END {str(time())}')
         self.refreshHologramSignal.emit()
@@ -570,8 +548,9 @@ class SLM(QDialog):
         else:
             try:
                 self.flat_file = fname
-                self.flat = np.flipud(np.ascontiguousarray(
-                    plt.imread(fname), dtype=np.float)/255)
+                self.flat = np.flipud(
+                    np.ascontiguousarray(plt.imread(fname), dtype=np.float) /
+                    255)
                 self.copy_flat_shape()
             except Exception:
                 self.flat_file = None
@@ -581,10 +560,8 @@ class SLM(QDialog):
             self.refresh_hologram()
 
     def set_hologram_geometry(self, geometry, refresh=True):
-        if (
-                self.flat_file is not None and
-                isinstance(self.flat, np.ndarray) and
-                len(self.flat.shape) == 2):
+        if (self.flat_file is not None and isinstance(self.flat, np.ndarray)
+                and len(self.flat.shape) == 2):
             self.hologram_geometry[:2] = geometry[:2]
             self.copy_flat_shape()
         elif geometry is not None:
@@ -613,10 +590,10 @@ class SLM(QDialog):
         if np.nonzero(coeffs)[0].size == 0:
             grating = np.zeros((Ny, Nx))
         else:
-            dx = np.arange(0, Nx)/Nx
-            dy = np.arange(0, Ny)/Ny
+            dx = np.arange(0, Nx) / Nx
+            dy = np.arange(0, Ny) / Ny
             xx, yy = np.meshgrid(dx, dy)
-            grating = 2*np.pi*(coeffs[0]*xx + coeffs[1]*yy)
+            grating = 2 * np.pi * (coeffs[0] * xx + coeffs[1] * yy)
 
         self.grating = grating
 
@@ -638,13 +615,11 @@ class SLM(QDialog):
             qp.end()
 
     def __str__(self):
-        return (
-            f'<slm.gui.{self.__class__.__name__} ' +
-            f'pupils={str(len(self.pupils))}>')
+        return (f'<slm.gui.{self.__class__.__name__} ' +
+                f'pupils={str(len(self.pupils))}>')
 
 
 class PhaseDisplay(QFrame):
-
     def __init__(self, n, parent=None):
         super().__init__(parent)
 
@@ -664,8 +639,9 @@ class PhaseDisplay(QFrame):
         self.update_phase(n, None)
         self.im = self.ax.imshow(self.phi, origin='lower')
         self.ax.axis('off')
-        self.cb = self.ax.figure.colorbar(
-            self.im, ax=self.ax, orientation='horizontal')
+        self.cb = self.ax.figure.colorbar(self.im,
+                                          ax=self.ax,
+                                          orientation='horizontal')
         self.cb.locator = ticker.MaxNLocator(nbins=3)
         self.cb.update_ticks()
 
@@ -678,8 +654,8 @@ class PhaseDisplay(QFrame):
             self.rzern = rzern
         if z is None:
             z = np.zeros(self.rzern.nk)
-        self.phi = self.rzern.eval_grid(z).reshape(
-                (self.siz1, self.siz1), order='F')
+        self.phi = self.rzern.eval_grid(z).reshape((self.siz1, self.siz1),
+                                                   order='F')
         inner = self.phi[np.isfinite(self.phi)]
         self.min1 = inner.min()
         self.max1 = inner.max()
@@ -697,9 +673,12 @@ class PhaseDisplay(QFrame):
 
 
 class MatplotlibWindow(QFrame):
-
-    def __init__(
-            self, slm, slmwindow, parent=None, toolbar=True, figsize=None):
+    def __init__(self,
+                 slm,
+                 slmwindow,
+                 parent=None,
+                 toolbar=True,
+                 figsize=None):
         super().__init__(parent)
 
         self.shape = None
@@ -734,8 +713,12 @@ class MatplotlibWindow(QFrame):
         self.setLayout(layout)
         self.slm = slm
         self.slmwindow = slmwindow
-        self.figure.subplots_adjust(
-            left=0, bottom=0, right=1, top=1, wspace=None, hspace=None)
+        self.figure.subplots_adjust(left=0,
+                                    bottom=0,
+                                    right=1,
+                                    top=1,
+                                    wspace=None,
+                                    hspace=None)
 
     def check_circ(self):
         if self.circ is None:
@@ -746,9 +729,7 @@ class MatplotlibWindow(QFrame):
             return 1
         else:
             p = self.slm.pupils[self.circ_ind]
-            if (
-                    p.rho != self.circ_rho or
-                    not np.allclose(p.xy, self.circ_xy)):
+            if (p.rho != self.circ_rho or not np.allclose(p.xy, self.circ_xy)):
                 return 1
             else:
                 return 0
@@ -761,11 +742,12 @@ class MatplotlibWindow(QFrame):
                 self.circ[0].remove()
                 self.circ = None
             p = self.slm.pupils[self.circ_ind]
-            ll = np.linspace(0, 2*np.pi, 50)
-            self.circ = self.ax.plot(
-                p.rho*np.cos(ll) + p.xy[0] + self.slm.hologram_geometry[2]/2,
-                p.rho*np.sin(ll) - p.xy[1] + self.slm.hologram_geometry[3]/2,
-                color='r')
+            ll = np.linspace(0, 2 * np.pi, 50)
+            self.circ = self.ax.plot(p.rho * np.cos(ll) + p.xy[0] +
+                                     self.slm.hologram_geometry[2] / 2,
+                                     p.rho * np.sin(ll) - p.xy[1] +
+                                     self.slm.hologram_geometry[3] / 2,
+                                     color='r')
             self.circ_rho = p.rho
             self.circ_xy = np.array(p.xy, copy=1)
             self.circ_geometry = np.array(self.slm.hologram_geometry, copy=1)
@@ -780,8 +762,10 @@ class MatplotlibWindow(QFrame):
             if self.im:
                 self.ax.clear()
                 self.circ = None
-            self.im = self.ax.imshow(
-                self.slm.gray, cmap="gray", vmin=0, vmax=0xff)
+            self.im = self.ax.imshow(self.slm.gray,
+                                     cmap="gray",
+                                     vmin=0,
+                                     vmax=0xff)
             self.ax.axis("off")
             self.xlim = self.ax.get_xlim()
             self.ylim = self.ax.get_ylim()
@@ -799,7 +783,6 @@ class MatplotlibWindow(QFrame):
 
 
 class RelSlider:
-
     def __init__(self, val, cb):
         self.old_val = None
         self.fto100mul = 100
@@ -835,6 +818,7 @@ class RelSlider:
                 self.sba_color(val)
                 self.cb(val)
                 self.unblock()
+
             return f
 
         def qs1_cb():
@@ -846,12 +830,13 @@ class RelSlider:
                     self.unblock()
                     return
 
-                val = self.old_val + self.qsr.value()/100*self.sbm.value()
+                val = self.old_val + self.qsr.value() / 100 * self.sbm.value()
                 self.sba.setValue(val)
                 self.sba_color(val)
                 self.cb(val)
 
                 self.unblock()
+
             return f
 
         def qs1_end():
@@ -860,6 +845,7 @@ class RelSlider:
                 self.qsr.setValue(0)
                 self.old_val = None
                 self.unblock()
+
             return f
 
         def qs1_start():
@@ -867,6 +853,7 @@ class RelSlider:
                 self.block()
                 self.old_val = self.get_value()
                 self.unblock()
+
             return f
 
         self.sba_cb = sba_cb()
@@ -912,7 +899,7 @@ class RelSlider:
         self.sbm.setEnabled(False)
 
     def fto100(self, f):
-        return int((f + self.m2)/(2*self.m2)*self.fto100mul)
+        return int((f + self.m2) / (2 * self.m2) * self.fto100mul)
 
     def get_value(self):
         return self.sba.value()
@@ -950,7 +937,6 @@ class RelSlider:
 
 
 class PlotCoeffs(QDialog):
-
     def set_data(self, z):
         self.setWindowTitle('Zernike coefficients')
         frame = QFrame()
@@ -960,10 +946,12 @@ class PlotCoeffs(QDialog):
         nav = NavigationToolbar2QT(fig, frame)
         layout.addWidget(nav, 0, 0)
         layout.addWidget(fig, 1, 0)
-        fig.figure.subplots_adjust(
-            left=.125, right=.9,
-            bottom=.1, top=.9,
-            wspace=0.45, hspace=0.45)
+        fig.figure.subplots_adjust(left=.125,
+                                   right=.9,
+                                   bottom=.1,
+                                   top=.9,
+                                   wspace=0.45,
+                                   hspace=0.45)
         self.fig = fig
 
         ax1 = fig.figure.add_subplot(1, 1, 1)
@@ -1018,6 +1006,7 @@ class PupilPanel(QFrame):
     def helper_boolupdate(self, mycallback):
         def f(i):
             mycallback(i)
+
         return f
 
     def get_pupil(self):
@@ -1036,6 +1025,7 @@ class PupilPanel(QFrame):
                 xy[ind] = fval
                 p.set_xy(xy)
                 le.setText(str(p.xy[ind]))
+
             return f
 
         def handle_rho(ind, le):
@@ -1047,13 +1037,14 @@ class PupilPanel(QFrame):
                     return
                 self.pupil.set_rho(fval)
                 le.setText(str(self.pupil.rho))
+
             return f
 
         group = QGroupBox('Pupil')
         l1 = QGridLayout()
 
         def help1(txt, mini, handler, curval, i, j=0):
-            l1.addWidget(QLabel(txt), j, 2*i)
+            l1.addWidget(QLabel(txt), j, 2 * i)
             le = QLineEdit(str(curval))
             le.editingFinished.connect(handler(i, le))
             le.setMaximumWidth(50)
@@ -1062,7 +1053,7 @@ class PupilPanel(QFrame):
             le.setValidator(val)
             if mini:
                 val.setBottom(mini)
-            l1.addWidget(le, j, 2*i + 1)
+            l1.addWidget(le, j, 2 * i + 1)
             return le
 
         lex = help1('x0', None, handle_xy, self.pupil.xy[0], 0)
@@ -1071,8 +1062,8 @@ class PupilPanel(QFrame):
 
         cbenabled = QCheckBox('on')
         cbenabled.setChecked(self.pupil.enabled)
-        cbenabled.toggled.connect(self.helper_boolupdate(
-            self.pupil.set_enabled))
+        cbenabled.toggled.connect(
+            self.helper_boolupdate(self.pupil.set_enabled))
 
         lename = QLineEdit(self.pupil.name)
         l1.addWidget(cbenabled, 1, 0, 1, 2)
@@ -1082,6 +1073,7 @@ class PupilPanel(QFrame):
             def f():
                 self.pupil.name = lename.text()
                 self.ptabs.setTabText(self.pindex, self.pupil.name)
+
             return f
 
         lename.editingFinished.connect(fname())
@@ -1095,20 +1087,19 @@ class PupilPanel(QFrame):
                     return
                 self.pupil.set_rotate(fval)
                 le.setText(str(self.pupil.rotate))
+
             return f
 
         cbx = QCheckBox('flipx')
         cbx.setChecked(self.pupil.flipx)
-        cbx.toggled.connect(self.helper_boolupdate(
-            self.pupil.set_flipx))
+        cbx.toggled.connect(self.helper_boolupdate(self.pupil.set_flipx))
         cby = QCheckBox('flipy')
         cby.setChecked(self.pupil.flipy)
-        cby.toggled.connect(self.helper_boolupdate(
-            self.pupil.set_flipy))
+        cby.toggled.connect(self.helper_boolupdate(self.pupil.set_flipy))
         l1.addWidget(cbx, 2, 0)
         l1.addWidget(cby, 2, 1)
-        lerotate = help1(
-            'rotate', None, handle_rotate, self.pupil.rotate, 2, 2)
+        lerotate = help1('rotate', None, handle_rotate, self.pupil.rotate, 2,
+                         2)
 
         def make_f():
             ctls = (lex, ley, lerho, cbx, cby, lerotate, cbenabled)
@@ -1129,6 +1120,7 @@ class PupilPanel(QFrame):
                 cbenabled.setChecked(self.pupil.enabled)
                 for p in ctls:
                     p.blockSignals(False)
+
             return f
 
         self.refresh_gui['pupil'] = make_f()
@@ -1141,13 +1133,13 @@ class PupilPanel(QFrame):
         l1 = QGridLayout()
         c = QCheckBox('on')
         c.setChecked(self.pupil.mask2d_on)
-        c.toggled.connect(self.helper_boolupdate(
-            self.pupil.set_mask2d_on))
+        c.toggled.connect(self.helper_boolupdate(self.pupil.set_mask2d_on))
         l1.addWidget(c, 0, 0, 1, 3)
 
         def f():
             def f(r):
                 self.pupil.set_mask2d_sign(r)
+
             return f
 
         lab1 = QLabel('m')
@@ -1160,6 +1152,7 @@ class PupilPanel(QFrame):
         def f2():
             def f(r):
                 self.pupil.set_mask2d_mul(r)
+
             return f
 
         lab2 = QLabel('α')
@@ -1180,6 +1173,7 @@ class PupilPanel(QFrame):
                 s.set_value(self.pupil.mask2d_sign)
                 s2.set_value(self.pupil.mask2d_mul)
                 s.unblock()
+
             return f
 
         self.refresh_gui['2d'] = f()
@@ -1189,20 +1183,21 @@ class PupilPanel(QFrame):
 
         def update_radius(slider, what):
             def f(r):
-                slider.setValue(int(r*100))
+                slider.setValue(int(r * 100))
                 what(r)
+
             return f
 
         def update_spinbox(s):
             def f(t):
-                s.setValue(t/100)
+                s.setValue(t / 100)
+
             return f
 
         l1 = QGridLayout()
         c = QCheckBox('on')
         c.setChecked(self.pupil.mask3d_on)
-        c.toggled.connect(self.helper_boolupdate(
-            self.pupil.set_mask3d_on))
+        c.toggled.connect(self.helper_boolupdate(self.pupil.set_mask3d_on))
         l1.addWidget(c, 0, 0)
         slider1 = QSlider(Qt.Horizontal)
         slider1.setMinimum(0)
@@ -1211,15 +1206,15 @@ class PupilPanel(QFrame):
         slider1.setTickPosition(QSlider.TicksBothSides)
         slider1.setTickInterval(20)
         slider1.setSingleStep(1)
-        slider1.setValue(int(100*self.pupil.mask3d_radius))
+        slider1.setValue(int(100 * self.pupil.mask3d_radius))
         spinbox1 = QDoubleSpinBox()
         spinbox1.setRange(0.0, 1.0)
         spinbox1.setSingleStep(0.01)
         spinbox1.setValue(self.pupil.mask3d_radius)
         slider1.valueChanged.connect(update_spinbox(spinbox1))
 
-        spinbox1.valueChanged.connect(update_radius(
-            slider1, self.pupil.set_mask3d_radius))
+        spinbox1.valueChanged.connect(
+            update_radius(slider1, self.pupil.set_mask3d_radius))
         l1.addWidget(QLabel('radius'), 0, 1)
         l1.addWidget(spinbox1, 0, 2)
         l1.addWidget(slider1, 0, 3)
@@ -1231,15 +1226,15 @@ class PupilPanel(QFrame):
         slider2.setTickPosition(QSlider.TicksBothSides)
         slider2.setTickInterval(40)
         slider2.setSingleStep(1)
-        slider2.setValue(int(100*self.pupil.mask3d_height))
+        slider2.setValue(int(100 * self.pupil.mask3d_height))
         spinbox2 = QDoubleSpinBox()
         spinbox2.setRange(0.0, 2.0)
         spinbox2.setSingleStep(0.01)
         spinbox2.setValue(self.pupil.mask3d_height)
         slider2.valueChanged.connect(update_spinbox(spinbox2))
 
-        spinbox2.valueChanged.connect(update_radius(
-            slider2, self.pupil.set_mask3d_height))
+        spinbox2.valueChanged.connect(
+            update_radius(slider2, self.pupil.set_mask3d_height))
         l1.addWidget(QLabel('height'), 1, 1)
         l1.addWidget(spinbox2, 1, 2)
         l1.addWidget(slider2, 1, 3)
@@ -1255,11 +1250,12 @@ class PupilPanel(QFrame):
                 for p in ctls:
                     p.blockSignals(True)
                 spinbox1.setValue(self.pupil.mask3d_radius)
-                slider1.setValue(int(100*self.pupil.mask3d_radius))
+                slider1.setValue(int(100 * self.pupil.mask3d_radius))
                 spinbox2.setValue(self.pupil.mask3d_height)
-                slider2.setValue(int(100*self.pupil.mask3d_height))
+                slider2.setValue(int(100 * self.pupil.mask3d_height))
                 for p in ctls:
                     p.blockSignals(False)
+
             return f
 
         self.refresh_gui['3d'] = f()
@@ -1269,8 +1265,7 @@ class PupilPanel(QFrame):
         l1 = QGridLayout()
         c = QCheckBox('on')
         c.setChecked(self.pupil.align_grid_on)
-        c.toggled.connect(self.helper_boolupdate(
-            self.pupil.set_align_grid_on))
+        c.toggled.connect(self.helper_boolupdate(self.pupil.set_align_grid_on))
         l1.addWidget(c, 0, 0)
 
         le = QLineEdit(str(self.pupil.align_grid_pitch))
@@ -1284,11 +1279,12 @@ class PupilPanel(QFrame):
             def f():
                 try:
                     ival = int(le.text())
-                    assert(ival > 0)
+                    assert (ival > 0)
                     self.pupil.set_align_grid_pitch(ival)
                 except Exception:
                     le.setText(str(self.pupil.align_grid_pitch))
                     return
+
             return f
 
         le.editingFinished.connect(f())
@@ -1301,6 +1297,7 @@ class PupilPanel(QFrame):
             def f():
                 c.setChecked(self.pupil.align_grid_on)
                 le.setText(str(self.pupil.align_grid_pitch))
+
             return f
 
         self.refresh_gui['grid'] = f()
@@ -1339,6 +1336,7 @@ class PupilPanel(QFrame):
                 p.set_data(self.pupil.aberration.ravel())
                 p.exec_()
                 self.parent.mutex.unlock()
+
             return f
 
         bplot.clicked.connect(plotf())
@@ -1355,13 +1353,16 @@ class PupilPanel(QFrame):
                 self.pupil.aberration[ind, 0] = r
                 self.pupil.set_aberration(self.pupil.aberration)
 
-                self.phase_display.update_phase(
-                    self.pupil.rzern.n, self.pupil.aberration, redraw=True)
+                self.phase_display.update_phase(self.pupil.rzern.n,
+                                                self.pupil.aberration,
+                                                redraw=True)
+
             return f
 
         def make_hand_lab(le, i):
             def f():
                 self.pupil.zernike_labels[str(i)] = le.text()
+
             return f
 
         def default_zernike_name(i, n, m):
@@ -1400,8 +1401,8 @@ class PupilPanel(QFrame):
                         lab = QLabel(
                             f'Z<sub>{i + 1}</sub> ' +
                             f'Z<sub>{ntab[i]}</sub><sup>{mtab[i]}</sup>')
-                        slider = RelSlider(
-                            self.pupil.aberration[i, 0], make_hand_slider(i))
+                        slider = RelSlider(self.pupil.aberration[i, 0],
+                                           make_hand_slider(i))
 
                         try:
                             zname = self.pupil.zernike_labels[str(i)]
@@ -1421,7 +1422,7 @@ class PupilPanel(QFrame):
 
                         self.zernike_rows.append((lab, slider, lbn, hand_lab))
 
-                    assert(len(self.zernike_rows) == mynk)
+                    assert (len(self.zernike_rows) == mynk)
 
                 elif len(self.zernike_rows) > mynk:
                     for i in range(len(self.zernike_rows) - 1, mynk - 1, -1):
@@ -1435,7 +1436,7 @@ class PupilPanel(QFrame):
                         lab.setParent(None)
                         lbn.setParent(None)
 
-                    assert(len(self.zernike_rows) == mynk)
+                    assert (len(self.zernike_rows) == mynk)
 
             return f
 
@@ -1444,32 +1445,35 @@ class PupilPanel(QFrame):
         def reset_fun():
             self.pupil.aberration[:] = 0
             self.pupil.set_aberration(self.pupil.aberration)
-            self.phase_display.update_phase(
-                self.pupil.rzern.n, self.pupil.aberration, redraw=True)
+            self.phase_display.update_phase(self.pupil.rzern.n,
+                                            self.pupil.aberration,
+                                            redraw=True)
             self.update_zernike_rows(0)
             self.update_zernike_rows()
 
         def change_radial():
             try:
                 ival = int(lezm.text())
-                assert(ival > 0)
+                assert (ival > 0)
             except Exception:
                 lezm.setText(str(len(self.zernike_rows)))
                 return
 
-            n = (ival + 1)*(ival + 2)//2
+            n = (ival + 1) * (ival + 2) // 2
             newab = np.zeros((n, 1))
             minn = min((n, self.pupil.rzern.nk))
             newab[:minn, 0] = self.pupil.aberration[:minn, 0]
             self.pupil.set_aberration(newab)
 
             self.update_zernike_rows()
-            self.phase_display.update_phase(
-                self.pupil.rzern.n, self.pupil.aberration, redraw=True)
+            self.phase_display.update_phase(self.pupil.rzern.n,
+                                            self.pupil.aberration,
+                                            redraw=True)
             lezm.setText(str(self.pupil.rzern.n))
 
-        self.phase_display.update_phase(
-            self.pupil.rzern.n, self.pupil.aberration, redraw=True)
+        self.phase_display.update_phase(self.pupil.rzern.n,
+                                        self.pupil.aberration,
+                                        redraw=True)
 
         reset.clicked.connect(reset_fun)
         lezm.editingFinished.connect(change_radial)
@@ -1480,8 +1484,10 @@ class PupilPanel(QFrame):
             def f():
                 self.update_zernike_rows(0)
                 self.update_zernike_rows()
-                self.phase_display.update_phase(
-                    self.pupil.rzern.n, self.pupil.aberration, redraw=True)
+                self.phase_display.update_phase(self.pupil.rzern.n,
+                                                self.pupil.aberration,
+                                                redraw=True)
+
             return f
 
         self.refresh_gui['aberration'] = f()
@@ -1497,6 +1503,7 @@ class PupilPanel(QFrame):
         def make_cb(ind):
             def f(r):
                 self.pupil.set_anglexy(r, ind)
+
             return f
 
         slider_x = RelSlider(self.pupil.angle_xy[0], make_cb(0))
@@ -1515,6 +1522,7 @@ class PupilPanel(QFrame):
                     s.block()
                     s.set_value(self.pupil.angle_xy[i])
                     s.unblock()
+
             return f
 
         self.refresh_gui['grating'] = f()
@@ -1540,7 +1548,7 @@ def get_noll_indices(params):
     remaining = np.setdiff1d(zernike_indices1, np.unique(zernike_indices))
     for k in remaining:
         zernike_indices.append(k)
-    assert(len(zernike_indices) == zernike_indices1.size)
+    assert (len(zernike_indices) == zernike_indices1.size)
     zernike_indices = np.array(zernike_indices, dtype=np.int)
 
     return zernike_indices
@@ -1550,7 +1558,6 @@ h5_prefix = 'slm/'
 
 
 class Zernike2Control:
-
     @staticmethod
     def get_default_parameters():
         return {
@@ -1558,7 +1565,7 @@ class Zernike2Control:
             'exclude': [1, 2, 3, 4],
             'min': 5,
             'max': 6,
-            }
+        }
 
     @staticmethod
     def get_parameters_info():
@@ -1567,14 +1574,13 @@ class Zernike2Control:
             'exclude': (list, int, 'Zernike indices to include'),
             'min': (int, (1, None), 'Minimum Zernike index'),
             'max': (int, (1, None), 'Maximum Zernike index'),
-            },
+        },
 
     def __init__(self):
         raise NotImplementedError()
 
 
 class Zernike1Control:
-
     @staticmethod
     def get_default_parameters():
         return {
@@ -1583,7 +1589,7 @@ class Zernike1Control:
             'min': 5,
             'max': 6,
             'pupil_index': 0,
-            }
+        }
 
     @staticmethod
     def get_parameters_info():
@@ -1593,13 +1599,12 @@ class Zernike1Control:
             'min': (int, (1, None), 'Minimum Zernike index', 1),
             'max': (int, (1, None), 'Maximum Zernike index', 1),
             'pupil_index': (int, (0, None), 'SLM pupil number', 0),
-            }
+        }
 
     def __str__(self):
-        return (
-            f'<slm.gui.{self.__class__.__name__} ' +
-            f'pupil={str(self.pars["pupil_index"])} ' +
-            f'ndof={self.ndof} indices={self.indices}>')
+        return (f'<slm.gui.{self.__class__.__name__} ' +
+                f'pupil={str(self.pars["pupil_index"])} ' +
+                f'ndof={self.ndof} indices={self.indices}>')
 
     def __init__(self, slm, pars={}, h5f=None):
         self.log = logging.getLogger(self.__class__.__name__)
@@ -1622,9 +1627,8 @@ class Zernike1Control:
 
         z0 = self.pupil.aberration.flatten()
         self.log.info(f'indices {self.indices} ndof {self.ndof}')
-        if (
-                self.ndof > 0 and
-                (self.indices - 1).max() >= self.pupil.aberration.size):
+        if (self.ndof > 0
+                and (self.indices - 1).max() >= self.pupil.aberration.size):
             z1 = z0
             z0 = np.zeros(self.indices.max())
             z0[:z1.size] = z1
@@ -1641,16 +1645,15 @@ class Zernike1Control:
 
         # handle orthogonal pupil transform
         try:
-            self.transform_pupil(
-                self.pupil.rotate,
-                self.pupil.flipx, self.pupil.flipy)
+            self.transform_pupil(self.pupil.rotate, self.pupil.flipx,
+                                 self.pupil.flipy)
         except Exception:
             self.P = None
 
-        self.ab = np.zeros((self.ndof,))
+        self.ab = np.zeros((self.ndof, ))
 
-        self.h5_make_empty('x', (self.ndof,))
-        self.h5_make_empty('z2', (self.z0.size,))
+        self.h5_make_empty('x', (self.ndof, ))
+        self.h5_make_empty('z2', (self.z0.size, ))
         self.h5_save('name', self.__class__.__name__)
         self.h5_save('ab', self.ab)
         self.h5_save('P', np.eye(self.z0.size))
@@ -1666,15 +1669,16 @@ class Zernike1Control:
             name = h5_prefix + self.__class__.__name__ + '/' + name
             if name in self.h5f:
                 del self.h5f[name]
-            self.h5f.create_dataset(
-                name, shape + (0,), maxshape=shape + (None,),
-                dtype=dtype)
+            self.h5f.create_dataset(name,
+                                    shape + (0, ),
+                                    maxshape=shape + (None, ),
+                                    dtype=dtype)
 
     def h5_append(self, name, what):
         if self.h5f:
             name = h5_prefix + self.__class__.__name__ + '/' + name
-            self.h5f[name].resize((
-                self.h5f[name].shape[0], self.h5f[name].shape[1] + 1))
+            self.h5f[name].resize(
+                (self.h5f[name].shape[0], self.h5f[name].shape[1] + 1))
             self.h5f[name][:, -1] = what
 
     def h5_save(self, where, what):
@@ -1686,7 +1690,7 @@ class Zernike1Control:
 
     def write(self, x):
         "Write Zernike coefficients"
-        assert(x.size == self.ndof)
+        assert (x.size == self.ndof)
 
         z1 = np.zeros(self.pupil.aberration.size)
 
@@ -1728,9 +1732,9 @@ class Zernike1Control:
                 del self.h5f[addr]
                 self.h5f[addr][:] = np.eye(self.nz)
         else:
-            assert(P.ndim == 2)
-            assert(P.shape[0] == P.shape[1])
-            assert(np.allclose(np.dot(P, P.T), np.eye(P.shape[0])))
+            assert (P.ndim == 2)
+            assert (P.shape[0] == P.shape[1])
+            assert (np.allclose(np.dot(P, P.T), np.eye(P.shape[0])))
             if self.P is None:
                 self.P = P.copy()
             else:
@@ -1742,7 +1746,6 @@ class Zernike1Control:
 
 
 class PupilPositionControl:
-
     @staticmethod
     def get_default_parameters():
         return {
@@ -1750,28 +1753,24 @@ class PupilPositionControl:
             'gain_y0': 1.0,
             'gain_rho': 1.0,
             'pupil_index': 0,
-            }
+        }
 
     @staticmethod
     def get_parameters_info():
         return {
-            'gain_x0': (
-                float, (None, None),
-                'scale x0 degree of freedom (0 to disable)', 1),
-            'gain_y0': (
-                float, (None, None),
-                'scale x0 degree of freedom (0 to disable)', 1),
-            'gain_rho': (
-                float, (None, None),
-                'scale x0 degree of freedom (0 to disable)', 1),
+            'gain_x0': (float, (None, None),
+                        'scale x0 degree of freedom (0 to disable)', 1),
+            'gain_y0': (float, (None, None),
+                        'scale x0 degree of freedom (0 to disable)', 1),
+            'gain_rho': (float, (None, None),
+                         'scale x0 degree of freedom (0 to disable)', 1),
             'pupil_index': (int, (0, None), 'SLM pupil number', 0),
-            }
+        }
 
     def __str__(self):
-        return (
-            f'<slm.gui.{self.__class__.__name__} ' +
-            f'pupil={str(self.pars["pupil_index"])} ' +
-            f'ndof={self.ndof}>')
+        return (f'<slm.gui.{self.__class__.__name__} ' +
+                f'pupil={str(self.pars["pupil_index"])} ' +
+                f'ndof={self.ndof}>')
 
     def __init__(self, slm, pars={}, h5f=None):
         self.log = logging.getLogger(self.__class__.__name__)
@@ -1779,16 +1778,12 @@ class PupilPositionControl:
         self.pars = pars
         self.slm = slm
         self.pupil = slm.pupils[pars['pupil_index']]
-        self.pos0 = np.array([
-            self.pupil.xy[0],
-            self.pupil.xy[1],
-            self.pupil.rho])
+        self.pos0 = np.array(
+            [self.pupil.xy[0], self.pupil.xy[1], self.pupil.rho])
 
         self.gains = np.array([
-            self.pars['gain_x0'],
-            self.pars['gain_y0'],
-            self.pars['gain_rho']
-            ])
+            self.pars['gain_x0'], self.pars['gain_y0'], self.pars['gain_rho']
+        ])
 
         try:
             enabled = self.pars['enabled']
@@ -1810,8 +1805,8 @@ class PupilPositionControl:
         self.h5_save('gains', self.gains)
         self.P = None
 
-        self.h5_make_empty('z2', (self.ndof,))
-        self.h5_make_empty('x', (self.ndof,))
+        self.h5_make_empty('z2', (self.ndof, ))
+        self.h5_make_empty('x', (self.ndof, ))
         self.h5_save('ab', np.zeros(self.ndof))
         self.h5_save('name', self.__class__.__name__)
         self.h5_save('params', json.dumps(pars))
@@ -1826,15 +1821,16 @@ class PupilPositionControl:
             name = h5_prefix + self.__class__.__name__ + '/' + name
             if name in self.h5f:
                 del self.h5f[name]
-            self.h5f.create_dataset(
-                name, shape + (0,), maxshape=shape + (None,),
-                dtype=dtype)
+            self.h5f.create_dataset(name,
+                                    shape + (0, ),
+                                    maxshape=shape + (None, ),
+                                    dtype=dtype)
 
     def h5_append(self, name, what):
         if self.h5f:
             name = h5_prefix + self.__class__.__name__ + '/' + name
-            self.h5f[name].resize((
-                self.h5f[name].shape[0], self.h5f[name].shape[1] + 1))
+            self.h5f[name].resize(
+                (self.h5f[name].shape[0], self.h5f[name].shape[1] + 1))
             self.h5f[name][:, -1] = what
 
     def h5_save(self, where, what):
@@ -1846,7 +1842,7 @@ class PupilPositionControl:
 
     def write(self, x):
         "Write mask alignment"
-        assert(x.size == self.ndof)
+        assert (x.size == self.ndof)
 
         delta = self.gains.copy()
         c = 0
@@ -1870,15 +1866,14 @@ class PupilPositionControl:
 
 
 class SLMControls:
-
     @staticmethod
     def get_default_parameters():
         return {
             'Zernike1Control': Zernike1Control.get_default_parameters(),
             'PupilPositionControl':
-                PupilPositionControl.get_default_parameters(),
+            PupilPositionControl.get_default_parameters(),
             # 'Zernike2Control': Zernike2Control.get_default_parameters(),
-            }
+        }
 
     @staticmethod
     def get_parameters_info():
@@ -1886,7 +1881,7 @@ class SLMControls:
             'Zernike1Control': Zernike1Control.get_parameters_info(),
             'PupilPositionControl': PupilPositionControl.get_parameters_info(),
             # 'Zernike2Control': Zernike2Control.get_parameters_info(),
-            }
+        }
 
     @staticmethod
     def get_controls():
@@ -1906,7 +1901,6 @@ class SLMControls:
 
 
 class OptionsPanel(QFrame):
-
     def setup(self, pars, name, defaultd, infod):
         self.lines = []
         self.pars = pars
@@ -1943,33 +1937,30 @@ class OptionsPanel(QFrame):
         if addr_selection not in self.pars:
             self.pars[addr_selection] = self.selection
 
-        self.from_dict(
-            self.selection,
-            self.infod[self.selection],
-            self.pars[self.addr_options][self.selection])
+        self.from_dict(self.selection, self.infod[self.selection],
+                       self.pars[self.addr_options][self.selection])
 
         def f():
             def f(selection):
                 self.clear_all()
-                self.from_dict(
-                    selection,
-                    self.infod[selection],
-                    self.pars[self.addr_options][selection])
+                self.from_dict(selection, self.infod[selection],
+                               self.pars[self.addr_options][selection])
                 self.selection = selection
+
             return f
 
         combo.currentTextChanged.connect(f())
 
     def get_options(self):
-        return (
-            self.selection,
-            dict(self.pars[self.addr_options][self.selection])
-            )
+        return (self.selection,
+                dict(self.pars[self.addr_options][self.selection]))
 
     def from_dict(self, selection, infod, valuesd):
         def get_noll():
-            indices = [str(s) for s in get_noll_indices(
-                self.pars[self.addr_options][selection]).tolist()]
+            indices = [
+                str(s) for s in get_noll_indices(self.pars[self.addr_options]
+                                                 [selection]).tolist()
+            ]
             return ', '.join(indices)
 
         count = 0
@@ -2002,16 +1993,18 @@ class OptionsPanel(QFrame):
             def fle(k, le, val, type1):
                 def f():
                     newval = type1(le.text())
-                    self.pars[
-                        self.addr_options][selection][k] = type1(le.text())
+                    self.pars[self.addr_options][selection][k] = type1(
+                        le.text())
                     val.setFixup(newval)
                     if le_noll:
                         le_noll.setText(get_noll())
+
                 return f
 
             def ledisc(w, hand):
                 def f():
                     w.editingFinished.disconnect(hand)
+
                 return f
 
             curval = valuesd[k]
@@ -2041,7 +2034,8 @@ class OptionsPanel(QFrame):
                         try:
                             tmp = [
                                 bounds(s) for s in le.text().split(',')
-                                if s != '']
+                                if s != ''
+                            ]
                         except Exception:
                             tmp = old
                         self.pars[self.addr_options][selection][k] = tmp
@@ -2050,6 +2044,7 @@ class OptionsPanel(QFrame):
                         le.blockSignals(False)
                         if le_noll:
                             le_noll.setText(get_noll())
+
                     return f
 
                 hand = make_validator(k, le, type1, bounds)
@@ -2097,9 +2092,10 @@ class SLMWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
 
         if 'controlwindow' in pars.keys():
-            self.setGeometry(
-                pars['controlwindow'][0], pars['controlwindow'][1],
-                pars['controlwindow'][2], pars['controlwindow'][3])
+            self.setGeometry(pars['controlwindow'][0],
+                             pars['controlwindow'][1],
+                             pars['controlwindow'][2],
+                             pars['controlwindow'][3])
 
         self.pupilsTab = QTabWidget()
         for p in self.slm.pupils:
@@ -2167,11 +2163,13 @@ class SLMWindow(QMainWindow):
                 for _, v in self.refresh_gui.items():
                     v()
                 unlock()
+
             return f
 
         def make_acquire_hand():
             def f(t):
                 lock()
+
             return f
 
         self.sig_release.connect(make_release_hand())
@@ -2180,11 +2178,13 @@ class SLMWindow(QMainWindow):
         def make_lock_hand():
             def f():
                 lock()
+
             return f
 
         def make_unlock_hand():
             def f():
                 unlock()
+
             return f
 
         self.sig_lock.connect(make_lock_hand())
@@ -2193,16 +2193,14 @@ class SLMWindow(QMainWindow):
         self.slm.refresh_hologram()
 
     def __str__(self):
-        return (
-            f'<slm.gui.{self.__class__.__name__} ' +
-            f'pupils={str(len(self.slm.pupils))}>')
+        return (f'<slm.gui.{self.__class__.__name__} ' +
+                f'pupils={str(len(self.slm.pupils))}>')
 
     def make_control_options(self):
         control_options = OptionsPanel()
-        control_options.setup(
-            self.pars, 'control',
-            SLMControls.get_default_parameters(),
-            SLMControls.get_parameters_info())
+        control_options.setup(self.pars, 'control',
+                              SLMControls.get_default_parameters(),
+                              SLMControls.get_parameters_info())
         self.control_options = control_options
 
     @staticmethod
@@ -2210,6 +2208,7 @@ class SLMWindow(QMainWindow):
         def f(i):
             mycallback(i)
             myupdate()
+
         return f
 
     def make_general_display(self):
@@ -2233,7 +2232,8 @@ class SLMWindow(QMainWindow):
         def helper_load():
             def myf1():
                 fdiag, _ = QFileDialog.getOpenFileName(
-                    self, 'Load SLM parameters',
+                    self,
+                    'Load SLM parameters',
                     filter='JSON (*.json);;All Files (*)')
                 if fdiag:
                     bk = self.save_parameters()
@@ -2245,31 +2245,35 @@ class SLMWindow(QMainWindow):
                         em = QErrorMessage()
                         em.showMessage(
                             f'Failed to load {fdiag}: {str(ex)}<br><br>' +
-                            traceback.format_exc().replace(
-                                '\r', '').replace('\n', '<br>'))
+                            traceback.format_exc().replace('\r', '').replace(
+                                '\n', '<br>'))
                         em.exec_()
+
             return myf1
 
         def helper_save():
             def myf1():
                 fdiag, _ = QFileDialog.getSaveFileName(
-                    self, 'Save parameters',
+                    self,
+                    'Save parameters',
                     directory=datetime.now().strftime(
                         '%Y%m%d_%H%M%S_slm.json'),
                     filter='JSON (*.json);;All Files (*)')
                 if fdiag:
                     try:
                         with open(fdiag, 'w') as f:
-                            json.dump(
-                                self.save_parameters(), f,
-                                sort_keys=True, indent=4)
+                            json.dump(self.save_parameters(),
+                                      f,
+                                      sort_keys=True,
+                                      indent=4)
                     except Exception as ex:
                         em = QErrorMessage()
                         em.showMessage(
                             f'Failed to write {fdiag}: {str(ex)}<br><br>' +
-                            traceback.format_exc().replace(
-                                '\r', '').replace('\n', '<br>'))
+                            traceback.format_exc().replace('\r', '').replace(
+                                '\n', '<br>'))
                         em.exec_()
+
             return myf1
 
         def helper_console():
@@ -2277,6 +2281,7 @@ class SLMWindow(QMainWindow):
                 def f(t):
                     self.sig_release.emit(())
                     self.unlock_gui()
+
                 return f
 
             def start(t):
@@ -2313,27 +2318,31 @@ class SLMWindow(QMainWindow):
         curg = self.geometry()
         return {
             'controlwindow': {
-                'geometry': [
-                    curg.x(), curg.y(), curg.width(), curg.height()],
-                },
+                'geometry': [curg.x(),
+                             curg.y(),
+                             curg.width(),
+                             curg.height()],
+            },
             'slm': self.slm.save_parameters(),
-            }
+        }
 
     def make_flat_tab(self):
         def helper_load_flat1():
             def myf1():
                 fdiag, _ = QFileDialog.getOpenFileName(
-                    self, 'Select a flat file',
+                    self,
+                    'Select a flat file',
                     filter='Images (*.bmp *.png);;All Files (*)')
                 if fdiag:
                     self.slm.set_flat(fdiag)
+
             return myf1
 
         g = QGroupBox('Flattening')
         l1 = QGridLayout()
         cboxlf = QCheckBox('on')
-        cboxlf.toggled.connect(self.helper_boolupdate(
-            self.slm.set_flat_on, self.slm.update))
+        cboxlf.toggled.connect(
+            self.helper_boolupdate(self.slm.set_flat_on, self.slm.update))
         cboxlf.setChecked(self.slm.flat_on)
         l1.addWidget(cboxlf, 0, 0)
         loadbut = QPushButton('load')
@@ -2344,6 +2353,7 @@ class SLMWindow(QMainWindow):
         def f():
             def f():
                 cboxlf.setChecked(self.slm.flat_on)
+
             return f
 
         self.refresh_gui['flat'] = f()
@@ -2360,6 +2370,7 @@ class SLMWindow(QMainWindow):
                 self.slm.hologram_geometry[ind] = ival
                 self.slm.set_hologram_geometry(self.slm.hologram_geometry)
                 le.setText(str(self.slm.hologram_geometry[ind]))
+
             return f
 
         group = QGroupBox('Geometry')
@@ -2370,7 +2381,7 @@ class SLMWindow(QMainWindow):
 
         for i, tup in enumerate(zip(labels, mins)):
             txt, mini = tup
-            l1.addWidget(QLabel(txt), 0, 2*i)
+            l1.addWidget(QLabel(txt), 0, 2 * i)
             le = QLineEdit(str(self.slm.hologram_geometry[i]))
             le.editingFinished.connect(handle_geometry(i, le))
             le.setMaximumWidth(50)
@@ -2379,7 +2390,7 @@ class SLMWindow(QMainWindow):
             le.setValidator(val)
             if mini:
                 val.setBottom(mini)
-            l1.addWidget(le, 0, 2*i + 1)
+            l1.addWidget(le, 0, 2 * i + 1)
             les.append(le)
 
         def f():
@@ -2392,6 +2403,7 @@ class SLMWindow(QMainWindow):
                     le.blockSignals(True)
                     le.setText(str(g[i]))
                     le.blockSignals(False)
+
             return f
 
         self.refresh_gui['geometry'] = f()
@@ -2417,6 +2429,7 @@ class SLMWindow(QMainWindow):
                 self.slm.set_wrap_value(ival)
                 self.slm.update()
                 lewrap1.setText(str(self.slm.wrap_value))
+
             return f
 
         lewrap.editingFinished.connect(handle_wrap(lewrap))
@@ -2426,6 +2439,7 @@ class SLMWindow(QMainWindow):
         def f():
             def f():
                 lewrap.setText(str(self.slm.wrap_value))
+
             return f
 
         self.refresh_gui['wrap'] = f()
@@ -2450,6 +2464,7 @@ class SLMWindow(QMainWindow):
                 pp = PupilPanel(p, self.pupilsTab, self)
                 self.pupilPanels.append(pp)
                 self.pupilsTab.setCurrentIndex(ind)
+
             return f
 
         def fm():
@@ -2459,6 +2474,7 @@ class SLMWindow(QMainWindow):
                 self.pupilsTab.removeTab(len(self.slm.pupils) - 1)
                 self.pupilPanels.pop()
                 self.slm.pop_pupil()
+
             return f
 
         def ft():
@@ -2466,8 +2482,9 @@ class SLMWindow(QMainWindow):
                 for p, pp in zip(self.slm.pupils, self.pupilPanels):
                     p.set_enabled(not p.enabled, update=False)
                     pp.refresh_gui['pupil']()
-                    assert(pp.pupil == p)
+                    assert (pp.pupil == p)
                 self.slm.refresh_hologram()
+
             return f
 
         bpls.clicked.connect(fp())
@@ -2484,6 +2501,7 @@ class SLMWindow(QMainWindow):
         def make_cb(ind):
             def f(r):
                 self.slm.set_grating(r, ind)
+
             return f
 
         slider_x = RelSlider(self.slm.grating_coeffs[0], make_cb(0))
@@ -2500,6 +2518,7 @@ class SLMWindow(QMainWindow):
                     s.block()
                     s.set_value(self.slm.grating_coeffs[i])
                     s.unblock()
+
             return f
 
         self.refresh_gui['grating'] = f()
@@ -2516,7 +2535,7 @@ class SLMWindow(QMainWindow):
             event.ignore()
 
     def acquire_control(self, h5f):
-        self.sig_acquire.emit((h5f,))
+        self.sig_acquire.emit((h5f, ))
 
         try:
             cname, pars = self.control_options.get_options()
@@ -2542,9 +2561,11 @@ class SLMWindow(QMainWindow):
 
 
 def add_arguments(parser):
-    parser.add_argument(
-        '--slm-parameters', type=argparse.FileType('r'), default=None,
-        metavar='JSON', help='Load a previous configuration file')
+    parser.add_argument('--slm-parameters',
+                        type=argparse.FileType('r'),
+                        default=None,
+                        metavar='JSON',
+                        help='Load a previous configuration file')
 
 
 def new_slm_window(app, args, pars={}):
@@ -2595,15 +2616,17 @@ class Console(QDialog):
         def stop():
             def f():
                 "Close the console"
-                self.sig_close_console.emit((None,))
+                self.sig_close_console.emit((None, ))
                 kernel_client.stop_channels()
                 kernel_manager.shutdown_kernel()
+
             return f
 
         def draw():
             def f():
                 "Update the SLM hologram"
                 self.slmwin.app.processEvents()
+
             return f
 
         self.stop = stop()
@@ -2617,7 +2640,7 @@ class Console(QDialog):
             'draw': draw(),
             'exit': self.close,
             'quit': self.close,
-            })
+        })
 
     def closeEvent(self, event):
         self.stop()
@@ -2634,15 +2657,16 @@ if __name__ == '__main__':
     parser.add_argument('--no-file-log', action='store_true')
     parser.add_argument('--file-log', action='store_false', dest='no_file_log')
     parser.set_defaults(no_file_log=True)
-    parser.add_argument(
-        '--load', type=argparse.FileType('r'), default=None,
-        metavar='JSON',
-        help='Load a previous configuration file')
+    parser.add_argument('--load',
+                        type=argparse.FileType('r'),
+                        default=None,
+                        metavar='JSON',
+                        help='Load a previous configuration file')
     args = parser.parse_args(args[1:])
 
     if not args.no_file_log:
-        fn = datetime.now().strftime(
-            '%Y%m%d-%H%M%S-' + str(os.getpid()) + '.log')
+        fn = datetime.now().strftime('%Y%m%d-%H%M%S-' + str(os.getpid()) +
+                                     '.log')
         logging.basicConfig(filename=fn, level=logging.INFO)
     else:
         logging.basicConfig(level=logging.INFO)
