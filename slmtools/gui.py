@@ -989,16 +989,23 @@ class PupilPanel(QFrame):
         self.make_grid_tab()
         self.make_aberration_tab()
 
-        top = QGridLayout()
-        self.top = top
-        top.addWidget(self.group_phase, 0, 0, 3, 1)
-        top.addWidget(self.group_pupil, 0, 1)
-        top.addWidget(self.group_grating, 1, 1)
-        top.addWidget(self.group_2d, 2, 1)
-        top.addWidget(self.group_grid, 3, 0)
-        top.addWidget(self.group_3d, 3, 1)
-        top.addWidget(self.group_aberration, 4, 0, 2, 2)
-        self.setLayout(top)
+        upl = QGridLayout()
+        upl.addWidget(self.group_phase, 0, 0, 3, 1)
+        upl.addWidget(self.group_pupil, 0, 1)
+        upl.addWidget(self.group_grating, 1, 1)
+        upl.addWidget(self.group_2d, 2, 1)
+        upl.addWidget(self.group_grid, 3, 0)
+        upl.addWidget(self.group_3d, 3, 1)
+        up = QFrame()
+        up.setLayout(upl)
+
+        top = QSplitter(Qt.Vertical)
+        top.addWidget(up)
+        top.addWidget(self.group_aberration)
+
+        myl = QGridLayout()
+        myl.addWidget(top)
+        self.setLayout(myl)
 
         self.pindex = self.ptabs.count()
         self.ptabs.addTab(self, self.pupil.name)
