@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from slm import version
+from slmtools import version
 
 __author__ = 'J Antonello, A. Barbotin'
 __copyright__ = 'Copyright 2018-2020 J Antonello and A. Barbotin'

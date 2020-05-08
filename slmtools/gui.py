@@ -31,7 +31,7 @@ from zernike import RZern
 
 from qtconsole.inprocess import QtInProcessKernelManager
 from qtconsole.rich_jupyter_widget import RichJupyterWidget
-from slm import version
+from slmtools import version
 """SLM - spatial light modulator (SLM) controller.
 """
 
@@ -615,7 +615,7 @@ class SLM(QDialog):
             qp.end()
 
     def __str__(self):
-        return (f'<slm.gui.{self.__class__.__name__} ' +
+        return (f'<slmtools.gui.{self.__class__.__name__} ' +
                 f'pupils={str(len(self.pupils))}>')
 
 
@@ -1554,7 +1554,7 @@ def get_noll_indices(params):
     return zernike_indices
 
 
-h5_prefix = 'slm/'
+h5_prefix = 'slmtools/'
 
 
 class Zernike2Control:
@@ -1602,7 +1602,7 @@ class Zernike1Control:
         }
 
     def __str__(self):
-        return (f'<slm.gui.{self.__class__.__name__} ' +
+        return (f'<slmtools.gui.{self.__class__.__name__} ' +
                 f'pupil={str(self.pars["pupil_index"])} ' +
                 f'ndof={self.ndof} indices={self.indices}>')
 
@@ -1637,7 +1637,7 @@ class Zernike1Control:
 
         self.h5f = h5f
 
-        self.h5_save('slm', json.dumps(self.slm.save_parameters()))
+        self.h5_save('slmtools', json.dumps(self.slm.save_parameters()))
         self.h5_save('indices', self.indices)
         self.h5_save('flat', self.slm.flat)
         self.h5_save('z0', self.z0)
@@ -1768,7 +1768,7 @@ class PupilPositionControl:
         }
 
     def __str__(self):
-        return (f'<slm.gui.{self.__class__.__name__} ' +
+        return (f'<slmtools.gui.{self.__class__.__name__} ' +
                 f'pupil={str(self.pars["pupil_index"])} ' +
                 f'ndof={self.ndof}>')
 
@@ -1798,7 +1798,7 @@ class PupilPositionControl:
 
         self.h5f = h5f
 
-        self.h5_save('slm', json.dumps(self.slm.save_parameters()))
+        self.h5_save('slmtools', json.dumps(self.slm.save_parameters()))
         self.h5_save('flat', self.slm.flat)
         self.h5_save('z0', np.zeros(self.ndof))
         self.h5_save('pos0', self.pos0)
@@ -2193,7 +2193,7 @@ class SLMWindow(QMainWindow):
         self.slm.refresh_hologram()
 
     def __str__(self):
-        return (f'<slm.gui.{self.__class__.__name__} ' +
+        return (f'<slmtools.gui.{self.__class__.__name__} ' +
                 f'pupils={str(len(self.slm.pupils))}>')
 
     def make_control_options(self):
