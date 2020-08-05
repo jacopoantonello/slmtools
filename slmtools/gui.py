@@ -27,11 +27,11 @@ from PyQt5.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
                              QMainWindow, QPushButton, QScrollArea, QShortcut,
                              QSlider, QSplitter, QTabWidget, QVBoxLayout,
                              QWidget)
-from zernike import RZern
 
 from qtconsole.inprocess import QtInProcessKernelManager
 from qtconsole.rich_jupyter_widget import RichJupyterWidget
 from slmtools import version
+from zernike import RZern
 """SLM - spatial light modulator (SLM) controller.
 """
 
@@ -2066,12 +2066,12 @@ class OptionsPanel(QFrame):
             count += 1
 
     def clear_all(self):
-        for l in self.lines:
-            for w in l[0]:
+        for l1 in self.lines:
+            for w in l1[0]:
                 self.lay.removeWidget(w)
                 w.setParent(None)
-            if l[1]:
-                l[1]()
+            if l1[1]:
+                l1[1]()
         self.lines.clear()
 
 
