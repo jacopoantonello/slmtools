@@ -620,12 +620,13 @@ class SLM(QDialog):
 
 
 class PhaseDisplay(QFrame):
-    def __init__(self, n, parent=None):
+    def __init__(self, n, pupil, parent=None):
         super().__init__(parent)
 
         self.siz1 = 40
         self.dirty = False
         self.rzern = None
+        self.pupil = pupil
 
         self.setMaximumWidth(200)
         self.setMaximumHeight(200)
@@ -645,6 +646,11 @@ class PhaseDisplay(QFrame):
         self.cb.locator = ticker.MaxNLocator(nbins=3)
         self.cb.update_ticks()
 
+    def update_transforms(self):
+        self.R = transform_pupil(self.rzern, self.pupil.rotate,
+                                 self.pupil.flipx, self.pupil.flipy)
+        self.dirty = 1
+
     def update_phase(self, n, z, redraw=False):
         if self.rzern is None or self.rzern.n != n:
             rzern = RZern(n)
@@ -652,8 +658,10 @@ class PhaseDisplay(QFrame):
             xv, yv = np.meshgrid(dd, dd)
             rzern.make_cart_grid(xv, yv)
             self.rzern = rzern
+            self.update_transforms()
         if z is None:
             z = np.zeros(self.rzern.nk)
+        z = np.dot(self.R, z)
         self.phi = self.rzern.eval_grid(z).reshape((self.siz1, self.siz1),
                                                    order='F')
         inner = self.phi[np.isfinite(self.phi)]
@@ -1016,6 +1024,16 @@ class PupilPanel(QFrame):
 
         return f
 
+    def helper_boolupdate_transform(self, mycallback):
+        def f(i):
+            mycallback(i)
+            self.phase_display.update_transforms()
+            self.phase_display.update_phase(self.pupil.rzern.n,
+                                            self.pupil.aberration,
+                                            redraw=True)
+
+        return f
+
     def get_pupil(self):
         return self.pupil
 
@@ -1093,16 +1111,22 @@ class PupilPanel(QFrame):
                     le.setText(str(self.pupil.rotate))
                     return
                 self.pupil.set_rotate(fval)
+                self.phase_display.update_transforms()
+                self.phase_display.update_phase(self.pupil.rzern.n,
+                                                self.pupil.aberration,
+                                                redraw=True)
                 le.setText(str(self.pupil.rotate))
 
             return f
 
         cbx = QCheckBox('flipx')
         cbx.setChecked(self.pupil.flipx)
-        cbx.toggled.connect(self.helper_boolupdate(self.pupil.set_flipx))
+        cbx.toggled.connect(
+            self.helper_boolupdate_transform(self.pupil.set_flipx))
         cby = QCheckBox('flipy')
         cby.setChecked(self.pupil.flipy)
-        cby.toggled.connect(self.helper_boolupdate(self.pupil.set_flipy))
+        cby.toggled.connect(
+            self.helper_boolupdate_transform(self.pupil.set_flipy))
         l1.addWidget(cbx, 2, 0)
         l1.addWidget(cby, 2, 1)
         lerotate = help1('rotate', None, handle_rotate, self.pupil.rotate, 2,
@@ -1311,7 +1335,7 @@ class PupilPanel(QFrame):
 
     def make_phase_tab(self):
         g = QGroupBox('Phase')
-        phase_display = PhaseDisplay(self.pupil.rzern.n)
+        phase_display = PhaseDisplay(self.pupil.rzern.n, self.pupil)
         l1 = QGridLayout()
         l1.addWidget(phase_display, 0, 0)
         g.setLayout(l1)
