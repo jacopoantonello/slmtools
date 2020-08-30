@@ -27,11 +27,11 @@ from PyQt5.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
                              QMainWindow, QPushButton, QScrollArea, QShortcut,
                              QSlider, QSplitter, QTabWidget, QVBoxLayout,
                              QWidget)
-
 from qtconsole.inprocess import QtInProcessKernelManager
 from qtconsole.rich_jupyter_widget import RichJupyterWidget
-from slmtools import version
 from zernike import RZern
+
+from slmtools import version
 """SLM - spatial light modulator (SLM) controller.
 """
 
@@ -469,12 +469,14 @@ class SLM(QDialog):
     def refresh_hologram(self):
         self.log.info('refresh_hologram START')
 
-        # [0, 1]
+        # flattening in uint8
         if self.flat_file is None:
             self.flat = np.zeros(shape=(self.hologram_geometry[3],
-                                        self.hologram_geometry[2]))
+                                        self.hologram_geometry[2]),
+                                 dtype=np.uint8)
         else:
             self.copy_flat_shape()
+        assert (self.flat.dtype == np.uint8)
 
         self.setGeometry(*self.hologram_geometry)
         self.setFixedSize(self.hologram_geometry[2], self.hologram_geometry[3])
@@ -489,6 +491,7 @@ class SLM(QDialog):
             self.qim = QImage(self.arr.data, self.arr.shape[1],
                               self.arr.shape[0], QImage.Format_RGB32)
 
+        # phase of pupils in rads
         phase = 0
         masks = np.zeros(
             (self.hologram_geometry[3], self.hologram_geometry[2]),
@@ -499,6 +502,7 @@ class SLM(QDialog):
             assert (p.mask.shape == (self.hologram_geometry[3],
                                      self.hologram_geometry[2]))
             assert (p.mask.dtype == np.bool)
+        assert (phase.dtype == np.float)
         masks = np.logical_not(masks)
 
         def printout(t, x):
@@ -509,6 +513,7 @@ class SLM(QDialog):
                 self.log.info(f'refresh_hologram {t} ' + str(t) +
                               ' [0.0, 0.0] 0.0')
 
+        # grating in rad
         if self.grating is None:
             self.make_grating()
 
@@ -541,20 +546,20 @@ class SLM(QDialog):
         self.hologram_geometry[3] = self.flat.shape[0]
         self.grating = None
 
+    def reset_flat(self):
+        self.flat_file = None
+        self.flat = 0.0
+
     def set_flat(self, fname, refresh_hologram=True):
         if fname is None or fname == '':
-            self.flat_file = None
-            self.flat = 0.0
+            self.reset_flat()
         else:
             try:
                 self.flat_file = fname
-                self.flat = np.flipud(
-                    np.ascontiguousarray(plt.imread(fname), dtype=np.float) /
-                    255)
+                self.flat = np.flipud(plt.imread(fname))
                 self.copy_flat_shape()
             except Exception:
-                self.flat_file = None
-                self.flat = 0.0
+                self.reset_flat()
         self.grating = None
         if refresh_hologram:
             self.refresh_hologram()
