@@ -32,6 +32,8 @@ from qtconsole.rich_jupyter_widget import RichJupyterWidget
 from zernike import RZern
 
 from slmtools import version
+
+from . import build_hologram
 """SLM - spatial light modulator (SLM) controller.
 """
 
@@ -210,18 +212,6 @@ class Pupil():
         self.make_align_grid()
         assert (np.all(np.isfinite(self.align_grid)))
 
-        def printout(t, x):
-            if isinstance(x, np.ndarray):
-                self.log.debug(f'refresh_pupil {self.name} {t} ' +
-                               f'[{x.min():g}, {x.max():g}] {x.mean():g}')
-            else:
-                self.log.debug(f'refresh_pupil {self.name} ' + str(t) +
-                               ' [0.0, 0.0] 0.0')
-
-        printout('phi', self.phi)
-        printout('phi2d', self.phi2d)
-        printout('phi3d', self.phi3d)
-
         phase = (self.phi + self.mask2d_on * self.phi2d +
                  self.mask3d_on * self.phi3d + self.grating + self.align_grid)
 
@@ -275,7 +265,7 @@ class Pupil():
     def make_phi(self):
         # [-pi, pi] principal branch
         a = np.dot(self.R, self.aberration)
-        phi = np.pi + self.rzern.eval_grid(a)
+        phi = self.rzern.eval_grid(a)
         phi = np.ascontiguousarray(
             phi.reshape((self.holo.hologram_geometry[3],
                          self.holo.hologram_geometry[2]),
@@ -505,38 +495,14 @@ class SLM(QDialog):
         assert (phase.dtype == np.float)
         masks = np.logical_not(masks)
 
-        def printout(t, x):
-            if isinstance(x, np.ndarray):
-                self.log.info(f'refresh_hologram {t} ' +
-                              f'[{x.min():g}, {x.max():g}] {x.mean():g}')
-            else:
-                self.log.info(f'refresh_hologram {t} ' + str(t) +
-                              ' [0.0, 0.0] 0.0')
-
         # grating in rad
         if self.grating is None:
             self.make_grating()
 
-        # [0, 1] waves
-        background = self.flat_on * self.flat
-        # add background grating in waves
-        background[masks] += self.grating[masks] / (2 * np.pi)
-        # [-pi, pi] principal branch rads (zero mean) -> waves
-        phase /= (2 * np.pi)  # phase in waves
-        # all in waves
-        gray = background + phase
-        printout('gray', gray)
-        gray -= np.floor(gray.min())
-        assert (gray.min() >= -1e-9)
-        gray *= self.wrap_value
-        printout('gray', gray)
-        gray %= self.wrap_value
-        printout('gray', gray)
-        assert (gray.min() >= 0)
-        assert (gray.max() <= 255)
-        gray = np.flipud(gray.astype(np.uint8))
-        self.gray = gray
-        self.arr[:] = gray.astype(np.uint32) * 0x010101
+        self.gray = np.flipud(
+            build_hologram(self.flat_on * self.flat, self.grating, phase,
+                           masks, self.wrap_value))
+        self.arr[:] = self.gray.astype(np.uint32) * 0x010101
 
         self.log.info(f'refresh_hologram END {str(time())}')
         self.refreshHologramSignal.emit()
