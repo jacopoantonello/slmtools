@@ -66,7 +66,7 @@ setup(
         'Programming Language :: Python :: 3',
     ],
     install_requires=[
-        'numpy', 'matplotlib', 'PyQt5', 'zernike', 'h5py', 'scipy', 'imageio'
+        'numpy', 'matplotlib', 'PyQt5', 'zernike', 'h5py', 'imageio'
     ],
     packages=find_packages(exclude=['tests*', 'examples*']),
     python_requires='>=3.7',

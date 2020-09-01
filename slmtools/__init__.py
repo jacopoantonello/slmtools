@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
+from imageio import imread, imwrite
 
 from slmtools import version
 
@@ -24,6 +25,16 @@ commit:  {}
 """.format(__author__, __date__, __version__, __commit__)
 
 GRAY_DTYPE = np.uint8
+
+
+def load_background(fname):
+    flat = np.flipud(imread(fname, pilmode='L'))
+    return flat
+
+
+def save_background(fname, flat):
+    assert (flat.ndim == 2)
+    imwrite(fname, np.flipud(flat).astype(np.uint8), 'PNG')
 
 
 def get_Ngrays(wrap):

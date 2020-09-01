@@ -14,7 +14,6 @@ from time import time
 
 import matplotlib.pyplot as plt
 import numpy as np
-from imageio import imread
 from matplotlib import ticker
 from matplotlib.backends.backend_qt5agg import (FigureCanvas,
                                                 NavigationToolbar2QT)
@@ -32,7 +31,7 @@ from qtconsole.inprocess import QtInProcessKernelManager
 from qtconsole.rich_jupyter_widget import RichJupyterWidget
 from zernike import RZern
 
-from slmtools import merge_hologram_bits, version
+from slmtools import load_background, merge_hologram_bits, version
 """SLM - spatial light modulator (SLM) controller.
 """
 
@@ -524,7 +523,7 @@ class SLM(QDialog):
         else:
             try:
                 self.flat_file = fname
-                self.flat = np.flipud(imread(fname, pilmode='L'))
+                self.flat = load_background(fname)
                 self.copy_flat_shape()
             except Exception:
                 self.reset_flat()

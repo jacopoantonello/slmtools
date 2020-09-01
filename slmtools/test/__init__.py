@@ -3,12 +3,12 @@
 
 from os.path import dirname, join
 
-from scipy.io import loadmat
+from slmtools import load_background
 
 
 def get_flat_path():
-    return join(dirname(__file__), 'flat.mat')
+    return join(dirname(__file__), 'flat.png')
 
 
 def load_flat():
-    return loadmat(get_flat_path())['flat']
+    return load_background(get_flat_path())
