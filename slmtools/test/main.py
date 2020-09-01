@@ -8,8 +8,10 @@ from tempfile import NamedTemporaryFile
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.linalg import norm
+from numpy.ma import masked_array
 from numpy.random import normal, uniform
 from PyQt5.QtWidgets import QApplication
+from skimage.restoration import unwrap_phase
 from slmtools import (get_Ngrays, load_background, merge_hologram_bits,
                       save_background)
 from slmtools.gui import SLM
@@ -28,6 +30,7 @@ print(f'{flat1.shape=}')
 
 # check grayscale mappings
 wrap = int(np.round(uniform(1, 255)))
+wrap = 255
 print(f'{wrap=}')
 Ngrays, gray2phi = get_Ngrays(wrap)
 grays = np.arange(0, Ngrays)
@@ -40,8 +43,9 @@ assert (np.allclose(phs[-1] + (phs[1] - phs[0]), 2 * np.pi))
 # make a random hologram scene
 holo = SLM()
 holo.set_wrap_value(wrap)
-pupil = holo.add_pupil()
+pupil = holo.pupils[0]
 holo.set_flat(tmpflat.name, refresh_hologram=False)
+os.unlink(tmpflat.name)
 holo.set_flat_on(True)
 min1 = min((holo.hologram_geometry[2] / 2, holo.hologram_geometry[3] / 2))
 xy = np.array([
@@ -59,6 +63,9 @@ pupil.set_aberration(zc)
 back, grating, phi, mask, wrap1 = holo.make_hologram_bits()
 hl = merge_hologram_bits(back, grating, phi, mask, wrap)
 assert (np.allclose(wrap, wrap1))
+mask_bg = mask
+mask_ap = np.logical_not(mask)
+del mask
 
 # check background
 back0 = np.remainder(flat.astype(np.float), Ngrays)
@@ -74,8 +81,59 @@ plt.subplot(2, 2, 3)
 plt.imshow(back1 - back0)
 plt.colorbar()
 plt.show()
-assert (np.allclose(back0[mask], back1[mask]))
+assert (np.allclose(back0[mask_bg], back1[mask_bg]))
 
 # check pupil phase
+ph0 = phi.copy()
+ph1 = hl.astype(np.float) * gray2phi - flat.astype(np.float) * gray2phi
+ph2 = np.array(unwrap_phase(masked_array(ph1, mask_bg)))
 
-os.unlink(tmpflat.name)
+ph0[mask_ap] -= ph0[mask_ap].mean()
+ph2[mask_ap] -= ph2[mask_ap].mean()
+err = ph0 - ph2
+
+ph0[mask_bg] = -np.inf
+ph1[mask_bg] = -np.inf
+ph2[mask_bg] = -np.inf
+err[mask_bg] = -np.inf
+
+
+def apply_remainder(p1):
+    p2 = p1.copy()
+    p2[mask_ap] = np.remainder(p2[mask_ap] / gray2phi, Ngrays)
+    return p2
+
+
+plt.figure(2)
+
+nn = 3
+mm = 3
+
+plt.subplot(nn, mm, 1)
+plt.imshow(ph0)
+plt.colorbar()
+plt.subplot(nn, mm, 2)
+plt.imshow(apply_remainder(ph0))
+plt.colorbar()
+
+plt.subplot(nn, mm, 4)
+plt.imshow(ph1)
+plt.colorbar()
+plt.subplot(nn, mm, 5)
+plt.imshow(apply_remainder(ph1))
+plt.colorbar()
+
+plt.subplot(nn, mm, 7)
+plt.imshow(ph2)
+plt.colorbar()
+plt.subplot(nn, mm, 8)
+plt.imshow(apply_remainder(ph2))
+plt.colorbar()
+
+plt.subplot(nn, mm, 9)
+plt.imshow(err)
+plt.colorbar()
+
+plt.show()
+
+assert (np.abs(err[mask_ap]).max() < 2 * np.pi / Ngrays)
