@@ -28,7 +28,6 @@ print(f'{flat1.shape=}')
 
 # check grayscale mappings
 wrap = int(np.round(uniform(1, 255)))
-wrap = 200  # DEBUG
 print(f'{wrap=}')
 Ngrays, gray2phi = get_Ngrays(wrap)
 grays = np.arange(0, Ngrays)
@@ -46,19 +45,16 @@ holo.set_flat(tmpflat.name, refresh_hologram=False)
 holo.set_flat_on(True)
 min1 = min((holo.hologram_geometry[2] / 2, holo.hologram_geometry[3] / 2))
 xy = np.array([
-    uniform(-holo.hologram_geometry[2] / 2, -holo.hologram_geometry[2] / 2),
-    uniform(-holo.hologram_geometry[3] / 2, -holo.hologram_geometry[3] / 2)
+    uniform(-holo.hologram_geometry[2] / 2, holo.hologram_geometry[2] / 2),
+    uniform(-holo.hologram_geometry[3] / 2, holo.hologram_geometry[3] / 2)
 ])
 rho = uniform(.2 * min1, .8 * min1)
-xy *= 0  # DEBUG
-rho = 100  # DEBUG
 pupil.set_xy(xy)
 pupil.set_rho(rho)
 print(pupil.xy, pupil.rho)
 print(f'{pupil.xy=} {pupil.rho=} ')
 zc = normal(size=(28, ))
 zc /= norm(zc)
-zc *= 0  # DEBUG
 pupil.set_aberration(zc)
 back, grating, phi, mask, wrap1 = holo.make_hologram_bits()
 hl = merge_hologram_bits(back, grating, phi, mask, wrap)
@@ -79,5 +75,7 @@ plt.imshow(back1 - back0)
 plt.colorbar()
 plt.show()
 assert (np.allclose(back0[mask], back1[mask]))
+
+# check pupil phase
 
 os.unlink(tmpflat.name)
