@@ -24,6 +24,12 @@ commit:  {}
 """.format(__author__, __date__, __version__, __commit__)
 
 
+def get_Ngrays(wrap):
+    Ngrays = wrap + 1
+    gray2phi = 2 * np.pi / Ngrays
+    return Ngrays, gray2phi
+
+
 def build_hologram(back, grating, phi, mask, wrap):
     gray_dtype = np.uint8
 
@@ -35,16 +41,7 @@ def build_hologram(back, grating, phi, mask, wrap):
     mph = np.logical_not(mask)
     mgr = mask
 
-    Ngrays = wrap + 1
-    gray2phi = 2 * np.pi / Ngrays
-
-    # debug
-    grays = np.arange(0, Ngrays)
-    phs = gray2phi * np.arange(0, Ngrays)
-    assert (np.allclose(Ngrays, grays.size))
-    assert (np.allclose(Ngrays, phs.size))
-    assert (np.allclose(phs[0], 0))
-    assert (np.allclose(phs[-1] + (phs[1] - phs[0]), 2 * np.pi))
+    Ngrays, gray2phi = get_Ngrays(wrap)
 
     gphi = np.round(phi[mph] / gray2phi).astype(gray_dtype)
     ggrt = np.round(grating[mgr] / gray2phi).astype(gray_dtype)

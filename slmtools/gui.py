@@ -14,6 +14,7 @@ from time import time
 
 import matplotlib.pyplot as plt
 import numpy as np
+from imageio import imread
 from matplotlib import ticker
 from matplotlib.backends.backend_qt5agg import (FigureCanvas,
                                                 NavigationToolbar2QT)
@@ -522,7 +523,7 @@ class SLM(QDialog):
         else:
             try:
                 self.flat_file = fname
-                self.flat = np.flipud(plt.imread(fname))
+                self.flat = np.flipud(imread(fname, pilmode='L'))
                 self.copy_flat_shape()
             except Exception:
                 self.reset_flat()

@@ -65,7 +65,9 @@ setup(
          'GNU General Public License v3 or later (GPLv3+)'),
         'Programming Language :: Python :: 3',
     ],
-    install_requires=['numpy', 'matplotlib', 'PyQt5', 'zernike', 'h5py'],
+    install_requires=[
+        'numpy', 'matplotlib', 'PyQt5', 'zernike', 'h5py', 'scipy', 'imageio'
+    ],
     packages=find_packages(exclude=['tests*', 'examples*']),
     python_requires='>=3.7',
 )
