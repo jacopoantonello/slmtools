@@ -2437,6 +2437,9 @@ class SLMWindow(QMainWindow):
 
         lewrap.editingFinished.connect(handle_wrap(lewrap))
         l1.addWidget(lewrap, 0, 0)
+        lewrap.setToolTip(
+            'Set the wrap value. E.g. 127 means that the phase wraps from 2Pi '
+            + 'to zero between 127 and 128')
         g.setLayout(l1)
 
         def f():
