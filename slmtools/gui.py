@@ -32,9 +32,7 @@ from qtconsole.inprocess import QtInProcessKernelManager
 from qtconsole.rich_jupyter_widget import RichJupyterWidget
 from zernike import RZern
 
-from slmtools import version
-
-from . import build_hologram
+from slmtools import merge_hologram_bits, version
 """SLM - spatial light modulator (SLM) controller.
 """
 
@@ -457,9 +455,7 @@ class SLM(QDialog):
     def save_parameters(self):
         return deepcopy(self.parameters2dict())
 
-    def refresh_hologram(self):
-        self.log.info('refresh_hologram START')
-
+    def make_hologram_bits(self):
         # flattening in uint8
         if self.flat_file is None:
             self.flat = np.zeros(shape=(self.hologram_geometry[3],
@@ -500,9 +496,14 @@ class SLM(QDialog):
         if self.grating is None:
             self.make_grating()
 
-        self.gray = np.flipud(
-            build_hologram(self.flat_on * self.flat, self.grating, phase,
-                           masks, self.wrap_value))
+        return self.flat, self.grating, phase, masks, self.wrap_value
+
+    def refresh_hologram(self):
+        self.log.info('refresh_hologram START')
+
+        back, grating, phi, mask, wrap = self.make_hologram_bits()
+        holo = merge_hologram_bits(back, grating, phi, mask, wrap)
+        self.gray = np.flipud(holo)
         self.arr[:] = self.gray.astype(np.uint32) * 0x010101
 
         self.log.info(f'refresh_hologram END {str(time())}')

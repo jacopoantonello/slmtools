@@ -23,6 +23,8 @@ version: {}
 commit:  {}
 """.format(__author__, __date__, __version__, __commit__)
 
+GRAY_DTYPE = np.uint8
+
 
 def get_Ngrays(wrap):
     Ngrays = wrap + 1
@@ -30,10 +32,9 @@ def get_Ngrays(wrap):
     return Ngrays, gray2phi
 
 
-def build_hologram(back, grating, phi, mask, wrap):
-    gray_dtype = np.uint8
+def merge_hologram_bits(back, grating, phi, mask, wrap):
 
-    assert (back.dtype == gray_dtype)
+    assert (back.dtype == GRAY_DTYPE)
     assert (grating.dtype == np.float)
     assert (phi.dtype == np.float)
     assert (mask.dtype == np.bool)
@@ -43,14 +44,14 @@ def build_hologram(back, grating, phi, mask, wrap):
 
     Ngrays, gray2phi = get_Ngrays(wrap)
 
-    gphi = np.round(phi[mph] / gray2phi).astype(gray_dtype)
-    ggrt = np.round(grating[mgr] / gray2phi).astype(gray_dtype)
+    gphi = np.round(phi[mph] / gray2phi).astype(GRAY_DTYPE)
+    ggrt = np.round(grating[mgr] / gray2phi).astype(GRAY_DTYPE)
 
     holo = back.copy()
     holo[mph] = np.remainder(holo[mph] + gphi, Ngrays)
     holo[mgr] = np.remainder(holo[mgr] + ggrt, Ngrays)
     assert (holo.min() >= 0)
     assert (holo.max() <= wrap)
-    assert (holo.dtype == gray_dtype)
+    assert (holo.dtype == GRAY_DTYPE)
 
     return holo
