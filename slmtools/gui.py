@@ -370,7 +370,7 @@ class Pupil():
         self.holo.refresh_hologram()
 
 
-class SLM(QDialog):
+class Hologram(QDialog):
     "Hologram displayed in the SLM window."
 
     refreshHologramSignal = pyqtSignal()
@@ -2576,7 +2576,7 @@ def add_arguments(parser):
 
 
 def new_slm_window(app, args, pars={}):
-    slm = SLM()
+    slm = Hologram()
     slm.show()
 
     cwin = SLMWindow(app, slm)
@@ -2678,7 +2678,7 @@ if __name__ == '__main__':
     else:
         logging.basicConfig(level=logging.INFO)
 
-    slm = SLM()
+    slm = Hologram()
     slm.show()
 
     cwin = SLMWindow(app, slm)

@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import QApplication
 from skimage.restoration import unwrap_phase
 from slmtools import (get_Ngrays, load_background, merge_hologram_bits,
                       save_background)
-from slmtools.gui import SLM
+from slmtools.gui import Hologram
 from slmtools.test import load_flat
 
 app = QApplication(sys.argv)  # noqa
@@ -40,7 +40,7 @@ assert (np.allclose(phs[0], 0))
 assert (np.allclose(phs[-1] + (phs[1] - phs[0]), 2 * np.pi))
 
 # make a random hologram scene
-holo = SLM()
+holo = Hologram()
 holo.set_wrap_value(wrap)
 pupil = holo.pupils[0]
 holo.set_flat(tmpflat.name, refresh_hologram=False)
