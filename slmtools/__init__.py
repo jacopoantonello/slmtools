@@ -44,7 +44,6 @@ def get_Ngrays(wrap):
 
 
 def merge_hologram_bits(back, grating, phi, mask, wrap):
-
     assert (back.dtype == GRAY_DTYPE)
     assert (grating.dtype == np.float)
     assert (phi.dtype == np.float)
@@ -55,12 +54,12 @@ def merge_hologram_bits(back, grating, phi, mask, wrap):
 
     Ngrays, gray2phi = get_Ngrays(wrap)
 
-    gphi = np.round(phi[mph] / gray2phi).astype(GRAY_DTYPE)
-    ggrt = np.round(grating[mgr] / gray2phi).astype(GRAY_DTYPE)
+    gphi = np.round(phi[mph] / gray2phi)
+    ggrt = np.round(grating[mgr] / gray2phi)
 
     holo = back.copy()
-    holo[mph] = np.remainder(holo[mph] + gphi, Ngrays)
-    holo[mgr] = np.remainder(holo[mgr] + ggrt, Ngrays)
+    holo[mph] = np.remainder(holo[mph] + gphi, Ngrays).astype(GRAY_DTYPE)
+    holo[mgr] = np.remainder(holo[mgr] + ggrt, Ngrays).astype(GRAY_DTYPE)
     assert (holo.min() >= 0)
     assert (holo.max() <= wrap)
     assert (holo.dtype == GRAY_DTYPE)

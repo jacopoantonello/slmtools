@@ -30,7 +30,6 @@ print(f'{flat1.shape=}')
 
 # check grayscale mappings
 wrap = int(np.round(uniform(1, 255)))
-wrap = 255
 print(f'{wrap=}')
 Ngrays, gray2phi = get_Ngrays(wrap)
 grays = np.arange(0, Ngrays)
@@ -80,12 +79,12 @@ plt.colorbar()
 plt.subplot(2, 2, 3)
 plt.imshow(back1 - back0)
 plt.colorbar()
-plt.show()
+
 assert (np.allclose(back0[mask_bg], back1[mask_bg]))
 
 # check pupil phase
 ph0 = phi.copy()
-ph1 = hl.astype(np.float) * gray2phi - flat.astype(np.float) * gray2phi
+ph1 = (hl.astype(np.float) - back0.astype(np.float)) * gray2phi
 ph2 = np.array(unwrap_phase(masked_array(ph1, mask_bg)))
 
 ph0[mask_ap] -= ph0[mask_ap].mean()
