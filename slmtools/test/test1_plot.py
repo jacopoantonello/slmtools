@@ -25,12 +25,14 @@ def run_tests(show_plot):
     save_background(tmpflat.name, flat)
     flat1 = load_background(tmpflat.name)
     assert (np.allclose(flat, flat1))
-    print(f'{flat.shape=}')
-    print(f'{flat1.shape=}')
+    if show_plot:
+        print(f'{flat.shape=}')
+        print(f'{flat1.shape=}')
 
     # check grayscale mappings
     wrap = int(np.round(uniform(1, 255)))
-    print(f'{wrap=}')
+    if show_plot:
+        print(f'{wrap=}')
     Ngrays, gray2phi = get_Ngrays(wrap)
     grays = np.arange(0, Ngrays)
     phs = gray2phi * np.arange(0, Ngrays)
@@ -54,8 +56,9 @@ def run_tests(show_plot):
     rho = uniform(.2 * min1, .8 * min1)
     pupil.set_xy(xy)
     pupil.set_rho(rho)
-    print(pupil.xy, pupil.rho)
-    print(f'{pupil.xy=} {pupil.rho=} ')
+    if show_plot:
+        print(pupil.xy, pupil.rho)
+        print(f'{pupil.xy=} {pupil.rho=} ')
     zc = normal(size=(28, ))
     zc /= norm(zc)
     pupil.set_aberration(zc)

@@ -763,7 +763,7 @@ class MatplotlibWindow(QFrame):
 
 
 class RelSlider:
-    def __init__(self, val, cb):
+    def __init__(self, val, cb, units=''):
         self.old_val = None
         self.fto100mul = 100
         self.cb = cb
@@ -772,7 +772,7 @@ class RelSlider:
         self.sba.setMinimum(-1000)
         self.sba.setMaximum(1000)
         self.sba.setDecimals(6)
-        self.sba.setToolTip('Effective value')
+        self.sba.setToolTip(f'Effective value {units}')
         self.sba.setValue(val)
         self.sba_color(val)
         self.sba.setSingleStep(1.25e-3)
@@ -788,8 +788,8 @@ class RelSlider:
         self.sbm.setMaximum(1000)
         self.sbm.setSingleStep(1.25e-3)
         self.sbm.setToolTip('Maximum relative delta')
-        self.sbm.setDecimals(2)
-        self.sbm.setValue(4.0)
+        self.sbm.setDecimals(6)
+        self.sbm.setValue(np.pi)
 
         def sba_cb():
             def f():
@@ -1405,7 +1405,7 @@ class PupilPanel(QFrame):
                             f'Z<sub>{i + 1}</sub> ' +
                             f'Z<sub>{ntab[i]}</sub><sup>{mtab[i]}</sup>')
                         slider = RelSlider(self.pupil.aberration[i, 0],
-                                           make_hand_slider(i))
+                                           make_hand_slider(i), '[rad]')
 
                         try:
                             zname = self.pupil.zernike_labels[str(i)]
@@ -1510,11 +1510,11 @@ class PupilPanel(QFrame):
 
             return f
 
-        slider_x = RelSlider(self.pupil.angle_xy[0], make_cb(0))
+        slider_x = RelSlider(self.pupil.angle_xy[0], make_cb(0), '[waves]')
         poslay.addWidget(QLabel('x'), 0, 0)
         slider_x.add_to_layout(poslay, 0, 1)
 
-        slider_y = RelSlider(self.pupil.angle_xy[1], make_cb(1))
+        slider_y = RelSlider(self.pupil.angle_xy[1], make_cb(1), '[waves]')
         poslay.addWidget(QLabel('y'), 1, 0)
         slider_y.add_to_layout(poslay, 1, 1)
 
@@ -2511,11 +2511,11 @@ class SLMWindow(QMainWindow):
 
             return f
 
-        slider_x = RelSlider(self.slm.grating_coeffs[0], make_cb(0))
+        slider_x = RelSlider(self.slm.grating_coeffs[0], make_cb(0), '[waves]')
         l1.addWidget(QLabel('x'), 0, 0)
         slider_x.add_to_layout(l1, 0, 1)
 
-        slider_y = RelSlider(self.slm.grating_coeffs[1], make_cb(1))
+        slider_y = RelSlider(self.slm.grating_coeffs[1], make_cb(1), '[waves]')
         l1.addWidget(QLabel('y'), 1, 0)
         slider_y.add_to_layout(l1, 1, 1)
 
@@ -2643,7 +2643,7 @@ class Console(QDialog):
             'np': np,
             'plt': plt,
             'slmwin': self.slmwin,
-            'slm': self.slmwin.slm,
+            'Hologram': self.slmwin.slm,
             'draw': draw(),
             'exit': self.close,
             'quit': self.close,
