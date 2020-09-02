@@ -765,7 +765,7 @@ class MatplotlibWindow(QFrame):
 
 
 class RelSlider:
-    def __init__(self, val, cb, units=''):
+    def __init__(self, val, cb, units='', delta_inc=np.pi):
         self.old_val = None
         self.fto100mul = 100
         self.cb = cb
@@ -791,7 +791,7 @@ class RelSlider:
         self.sbm.setSingleStep(1.25e-3)
         self.sbm.setToolTip('Maximum relative delta')
         self.sbm.setDecimals(6)
-        self.sbm.setValue(np.pi)
+        self.sbm.setValue(delta_inc)
 
         def sba_cb():
             def f():
@@ -1149,7 +1149,7 @@ class PupilPanel(QFrame):
 
         lab1 = QLabel('m')
         l1.addWidget(lab1, 1, 0)
-        s = RelSlider(self.pupil.mask2d_sign, f())
+        s = RelSlider(self.pupil.mask2d_sign, f(), delta_inc=1)
         s.add_to_layout(l1, 1, 1)
         lab1.setToolTip('Momentum')
         s.set_tooltip('Momentum')
@@ -1162,7 +1162,7 @@ class PupilPanel(QFrame):
 
         lab2 = QLabel('α')
         l1.addWidget(lab2, 2, 0)
-        s2 = RelSlider(self.pupil.mask2d_mul, f2())
+        s2 = RelSlider(self.pupil.mask2d_mul, f2(), delta_inc=1)
         s2.add_to_layout(l1, 2, 1)
         tt2 = 'θ<sup>α</sup>'
         lab2.setToolTip(tt2)
@@ -1407,7 +1407,9 @@ class PupilPanel(QFrame):
                             f'Z<sub>{i + 1}</sub> ' +
                             f'Z<sub>{ntab[i]}</sub><sup>{mtab[i]}</sup>')
                         slider = RelSlider(self.pupil.aberration[i, 0],
-                                           make_hand_slider(i), '[rad]')
+                                           make_hand_slider(i),
+                                           '[rad]',
+                                           delta_inc=np.pi)
 
                         try:
                             zname = self.pupil.zernike_labels[str(i)]
@@ -1512,11 +1514,17 @@ class PupilPanel(QFrame):
 
             return f
 
-        slider_x = RelSlider(self.pupil.angle_xy[0], make_cb(0), '[waves]')
+        slider_x = RelSlider(self.pupil.angle_xy[0],
+                             make_cb(0),
+                             '[waves]',
+                             delta_inc=1)
         poslay.addWidget(QLabel('x'), 0, 0)
         slider_x.add_to_layout(poslay, 0, 1)
 
-        slider_y = RelSlider(self.pupil.angle_xy[1], make_cb(1), '[waves]')
+        slider_y = RelSlider(self.pupil.angle_xy[1],
+                             make_cb(1),
+                             '[waves]',
+                             delta_inc=1)
         poslay.addWidget(QLabel('y'), 1, 0)
         slider_y.add_to_layout(poslay, 1, 1)
 
@@ -2513,11 +2521,17 @@ class SLMWindow(QMainWindow):
 
             return f
 
-        slider_x = RelSlider(self.slm.grating_coeffs[0], make_cb(0), '[waves]')
+        slider_x = RelSlider(self.slm.grating_coeffs[0],
+                             make_cb(0),
+                             '[waves]',
+                             delta_inc=1)
         l1.addWidget(QLabel('x'), 0, 0)
         slider_x.add_to_layout(l1, 0, 1)
 
-        slider_y = RelSlider(self.slm.grating_coeffs[1], make_cb(1), '[waves]')
+        slider_y = RelSlider(self.slm.grating_coeffs[1],
+                             make_cb(1),
+                             '[waves]',
+                             delta_inc=1)
         l1.addWidget(QLabel('y'), 1, 0)
         slider_y.add_to_layout(l1, 1, 1)
 
