@@ -478,7 +478,9 @@ class Hologram(QDialog):
                               self.arr.shape[0], QImage.Format_RGB32)
 
         # phase of pupils in rads
-        phase = 0
+        phase = np.zeros(shape=(self.hologram_geometry[3],
+                                self.hologram_geometry[2]),
+                         dtype=np.float)
         masks = np.zeros(
             (self.hologram_geometry[3], self.hologram_geometry[2]),
             dtype=np.bool)
