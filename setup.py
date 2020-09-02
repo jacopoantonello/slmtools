@@ -69,5 +69,6 @@ setup(
         'numpy', 'matplotlib', 'PyQt5', 'zernike', 'imageio', 'scikit-image'
     ],
     packages=find_packages(exclude=['tests*', 'examples*']),
+    package_data={'slmtools.test': ['flat.png']},
     python_requires='>=3.7',
 )
