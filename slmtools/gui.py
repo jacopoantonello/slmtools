@@ -31,7 +31,8 @@ from qtconsole.inprocess import QtInProcessKernelManager
 from qtconsole.rich_jupyter_widget import RichJupyterWidget
 from zernike import RZern
 
-from slmtools import load_background, merge_hologram_bits, version
+from slmtools import (load_background, merge_hologram_bits, save_background,
+                      version)
 """SLM - spatial light modulator (SLM) controller.
 """
 
@@ -2237,10 +2238,12 @@ class SLMWindow(QMainWindow):
         bload = QPushButton('load')
         bsave = QPushButton('save')
         bconsole = QPushButton('console')
+        bholo = QPushButton('save holo')
         l1 = QGridLayout()
         l1.addWidget(bsave, 0, 0)
         l1.addWidget(bload, 0, 1)
-        l1.addWidget(bconsole, 0, 2)
+        l1.addWidget(bconsole, 1, 0)
+        l1.addWidget(bholo, 1, 1)
         g.setLayout(l1)
 
         def helper_load():
@@ -2306,9 +2309,30 @@ class SLMWindow(QMainWindow):
 
             return start
 
+        def helper_holo():
+            def myf1():
+                fdiag, _ = QFileDialog.getSaveFileName(
+                    self,
+                    'Save raw hologram as PNG',
+                    directory=datetime.now().strftime('%Y%m%d_%H%M%S_slm.png'),
+                    filter='PNG (*.png);;All Files (*)')
+                if fdiag:
+                    try:
+                        save_background(fdiag, self.slm.gray)
+                    except Exception as ex:
+                        em = QErrorMessage()
+                        em.showMessage(
+                            f'Failed to write {fdiag}: {str(ex)}<br><br>' +
+                            traceback.format_exc().replace('\r', '').replace(
+                                '\n', '<br>'))
+                        em.exec_()
+
+            return myf1
+
         bload.clicked.connect(helper_load())
         bsave.clicked.connect(helper_save())
         bconsole.clicked.connect(helper_console())
+        bholo.clicked.connect(helper_holo())
         return g
 
     def load_parameters(self, d):
