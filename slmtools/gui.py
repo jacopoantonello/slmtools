@@ -2709,6 +2709,11 @@ if __name__ == '__main__':
                         default=None,
                         metavar='JSON',
                         help='Load a previous configuration file')
+    parser.add_argument('--dump-holo',
+                        type=argparse.FileType('w'),
+                        default=None,
+                        metavar='PNG',
+                        help='Dump hologram and exit')
     args = parser.parse_args(args[1:])
 
     if not args.no_file_log:
@@ -2717,6 +2722,23 @@ if __name__ == '__main__':
         logging.basicConfig(filename=fn, level=logging.INFO)
     else:
         logging.basicConfig(level=logging.INFO)
+
+    if args.dump_holo:
+        if args.load is None:
+            print('Error: --dump-holo can only be used along with --load',
+                  file=sys.stderr)
+            sys.exit(1)
+        args.dump_holo.close()
+
+        d = json.loads(args.load.read())
+        holo = Hologram()
+        holo.load_parameters(d['slm'])
+
+        back, grating, phi, mask, wrap1 = holo.make_hologram_bits()
+        hl = merge_hologram_bits(back, grating, phi, mask,
+                                 d['slm']['wrap_value'])
+        save_background(args.dump_holo.name, hl)
+        sys.exit()
 
     slm = Hologram()
     slm.show()
