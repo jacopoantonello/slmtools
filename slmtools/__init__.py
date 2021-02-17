@@ -7,7 +7,7 @@ from imageio import imread, imwrite
 from slmtools import version
 
 __author__ = 'J Antonello, A. Barbotin'
-__copyright__ = 'Copyright 2018-2020 J Antonello and A. Barbotin'
+__copyright__ = 'Copyright 2018-2021 J Antonello and A. Barbotin'
 __license__ = 'GPLv3+'
 __email__ = 'jacopo@antonello.org, aurelien.barbotin@dtc.ox.ac.uk'
 __status__ = 'Prototype'

@@ -2628,7 +2628,8 @@ def new_slm_window(app, args, pars={}):
         pars = {**pars, **d}
         args.slm_parameters = args.slm_parameters.name
 
-    cwin.load_parameters(pars)
+    if pars:
+        cwin.load_parameters(pars)
 
     return cwin
 
