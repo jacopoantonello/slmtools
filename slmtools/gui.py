@@ -160,7 +160,7 @@ class Pupil():
                 self.rzern = RZern(nnew)
             self.mask = np.ones((self.holo.hologram_geometry[3],
                                  self.holo.hologram_geometry[2]),
-                                dtype=np.bool)
+                                dtype=bool)
             self.log.info(f'refresh_pupil {self.name} END')
             return 0
 
@@ -481,17 +481,16 @@ class Hologram(QDialog):
         # phase of pupils in rads
         phase = np.zeros(shape=(self.hologram_geometry[3],
                                 self.hologram_geometry[2]),
-                         dtype=np.float)
+                         dtype=float)
         masks = np.zeros(
-            (self.hologram_geometry[3], self.hologram_geometry[2]),
-            dtype=np.bool)
+            (self.hologram_geometry[3], self.hologram_geometry[2]), dtype=bool)
         for p in self.pupils:
             phase += p.refresh_pupil()
             masks = np.logical_or(masks, np.logical_not(p.mask))
             assert (p.mask.shape == (self.hologram_geometry[3],
                                      self.hologram_geometry[2]))
-            assert (p.mask.dtype == np.bool)
-        assert (phase.dtype == np.float)
+            assert (p.mask.dtype == bool)
+        assert (phase.dtype == float)
         masks = np.logical_not(masks)
 
         # grating in rad
@@ -1549,10 +1548,10 @@ class PupilPanel(QFrame):
 def get_noll_indices(params):
     noll_min = params['min']
     noll_max = params['max']
-    minclude = np.array(params['include'], dtype=np.int)
-    mexclude = np.array(params['exclude'], dtype=np.int)
+    minclude = np.array(params['include'], dtype=int)
+    mexclude = np.array(params['exclude'], dtype=int)
 
-    mrange = np.arange(noll_min, noll_max + 1, dtype=np.int)
+    mrange = np.arange(noll_min, noll_max + 1, dtype=int)
     zernike_indices1 = np.setdiff1d(
         np.union1d(np.unique(mrange), np.unique(minclude)),
         np.unique(mexclude))
@@ -1564,7 +1563,7 @@ def get_noll_indices(params):
     for k in remaining:
         zernike_indices.append(k)
     assert (len(zernike_indices) == zernike_indices1.size)
-    zernike_indices = np.array(zernike_indices, dtype=np.int)
+    zernike_indices = np.array(zernike_indices, dtype=int)
 
     return zernike_indices
 
@@ -1637,7 +1636,7 @@ class Zernike1Control:
         if enabled:
             self.indices = get_noll_indices(pars)
         else:
-            self.indices = np.array([], dtype=np.int)
+            self.indices = np.array([], dtype=int)
         self.ndof = self.indices.size
 
         z0 = self.pupil.aberration.flatten()
@@ -1679,7 +1678,7 @@ class Zernike1Control:
         d['slm'] = self.slm.save_parameters()
         return d
 
-    def h5_make_empty(self, name, shape, dtype=np.float):
+    def h5_make_empty(self, name, shape, dtype=float):
         if self.h5f:
             name = h5_prefix + self.__class__.__name__ + '/' + name
             if name in self.h5f:
@@ -1831,7 +1830,7 @@ class PupilPositionControl:
         d['slm'] = self.slm.save_parameters()
         return d
 
-    def h5_make_empty(self, name, shape, dtype=np.float):
+    def h5_make_empty(self, name, shape, dtype=float):
         if self.h5f:
             name = h5_prefix + self.__class__.__name__ + '/' + name
             if name in self.h5f:
