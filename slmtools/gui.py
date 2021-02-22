@@ -2697,6 +2697,14 @@ class Console(QDialog):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
 
+    log_levels = {
+        'DEBUG': logging.DEBUG,
+        'INFO': logging.INFO,
+        'WARNING': logging.WARNING,
+        'ERROR': logging.ERROR,
+        'CRITICAL': logging.CRITICAL,
+    }
+
     args = app.arguments()
     parser = argparse.ArgumentParser(
         description='SLM control',
@@ -2714,14 +2722,18 @@ if __name__ == '__main__':
                         default=None,
                         metavar='PNG',
                         help='Dump hologram and exit')
+    parser.add_argument('--log-level',
+                        choices=list(log_levels.keys()),
+                        default='ERROR')
     args = parser.parse_args(args[1:])
 
-    if not args.no_file_log:
+    level = log_levels[args.log_level]
+    if args.no_file_log:
+        logging.basicConfig(level=level)
+    else:
         fn = datetime.now().strftime('%Y%m%d-%H%M%S-' + str(os.getpid()) +
                                      '.log')
-        logging.basicConfig(filename=fn, level=logging.INFO)
-    else:
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(filename=fn, level=level)
 
     if args.dump_holo:
         if args.load is None:
