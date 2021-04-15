@@ -45,9 +45,9 @@ def get_Ngrays(wrap):
 
 def merge_hologram_bits(back, grating, phi, mask, wrap):
     assert (back.dtype == GRAY_DTYPE)
-    assert (grating.dtype == np.float)
-    assert (phi.dtype == np.float)
-    assert (mask.dtype == np.bool)
+    assert (grating.dtype == float)
+    assert (phi.dtype == float)
+    assert (mask.dtype == bool)
 
     mph = np.logical_not(mask)
     mgr = mask

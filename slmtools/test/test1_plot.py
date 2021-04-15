@@ -70,8 +70,8 @@ def run_tests(show_plot):
     del mask
 
     # check background
-    back0 = np.remainder(flat.astype(np.float), Ngrays)
-    back1 = hl.astype(np.float)
+    back0 = np.remainder(flat.astype(float), Ngrays)
+    back1 = hl.astype(float)
 
     if show_plot:
         plt.figure(1)
@@ -89,7 +89,7 @@ def run_tests(show_plot):
 
     # check pupil phase
     ph0 = phi.copy()
-    ph1 = (hl.astype(np.float) - back0.astype(np.float)) * gray2phi
+    ph1 = (hl.astype(float) - back0.astype(float)) * gray2phi
     ph2 = np.array(unwrap_phase(masked_array(ph1, mask_bg)))
 
     ph0[mask_ap] -= ph0[mask_ap].mean()
