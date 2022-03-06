@@ -38,6 +38,7 @@ from slmtools import (load_background, merge_hologram_bits, save_background,
 
 
 class MyQDoubleValidator(QDoubleValidator):
+
     def setFixup(self, val):
         self.fixupval = val
 
@@ -46,6 +47,7 @@ class MyQDoubleValidator(QDoubleValidator):
 
 
 class MyQIntValidator(QIntValidator):
+
     def setFixup(self, val):
         self.fixupval = val
 
@@ -594,6 +596,7 @@ class Hologram(QDialog):
 
 
 class PhaseDisplay(QFrame):
+
     def __init__(self, n, pupil, parent=None):
         super().__init__(parent)
 
@@ -655,6 +658,7 @@ class PhaseDisplay(QFrame):
 
 
 class MatplotlibWindow(QFrame):
+
     def __init__(self,
                  slm,
                  slmwindow,
@@ -765,6 +769,7 @@ class MatplotlibWindow(QFrame):
 
 
 class RelSlider:
+
     def __init__(self, val, cb, units='', delta_inc=np.pi):
         self.old_val = None
         self.fto100mul = 100
@@ -794,6 +799,7 @@ class RelSlider:
         self.sbm.setValue(delta_inc)
 
         def sba_cb():
+
             def f():
                 self.block()
                 val = self.sba.value()
@@ -804,6 +810,7 @@ class RelSlider:
             return f
 
         def qs1_cb():
+
             def f(t):
                 self.block()
 
@@ -822,6 +829,7 @@ class RelSlider:
             return f
 
         def qs1_end():
+
             def f():
                 self.block()
                 self.qsr.setValue(0)
@@ -831,6 +839,7 @@ class RelSlider:
             return f
 
         def qs1_start():
+
             def f():
                 self.block()
                 self.old_val = self.get_value()
@@ -919,6 +928,7 @@ class RelSlider:
 
 
 class PlotCoeffs(QDialog):
+
     def set_data(self, z):
         self.setWindowTitle('Zernike coefficients')
         frame = QFrame()
@@ -950,6 +960,7 @@ class PlotCoeffs(QDialog):
 
 
 class PupilPanel(QFrame):
+
     def __init__(self, pupil, ptabs, parent=None):
         """Subclass for a control GUI.
         Parameters:
@@ -993,12 +1004,14 @@ class PupilPanel(QFrame):
         self.ptabs.addTab(self, self.pupil.name)
 
     def helper_boolupdate(self, mycallback):
+
         def f(i):
             mycallback(i)
 
         return f
 
     def helper_boolupdate_transform(self, mycallback):
+
         def f(i):
             mycallback(i)
             self.phase_display.update_transforms()
@@ -1012,7 +1025,9 @@ class PupilPanel(QFrame):
         return self.pupil
 
     def make_pupil_tab(self):
+
         def handle_xy(ind, le):
+
             def f():
                 p = self.get_pupil()
                 try:
@@ -1028,6 +1043,7 @@ class PupilPanel(QFrame):
             return f
 
         def handle_rho(ind, le):
+
             def f():
                 try:
                     fval = float(le.text())
@@ -1069,6 +1085,7 @@ class PupilPanel(QFrame):
         l1.addWidget(lename, 1, 2, 1, 4)
 
         def fname():
+
             def f():
                 self.pupil.name = lename.text()
                 self.ptabs.setTabText(self.pindex, self.pupil.name)
@@ -1078,6 +1095,7 @@ class PupilPanel(QFrame):
         lename.editingFinished.connect(fname())
 
         def handle_rotate(i, le):
+
             def f():
                 try:
                     fval = float(le.text())
@@ -1142,6 +1160,7 @@ class PupilPanel(QFrame):
         l1.addWidget(c, 0, 0, 1, 3)
 
         def f():
+
             def f(r):
                 self.pupil.set_mask2d_sign(r)
 
@@ -1155,6 +1174,7 @@ class PupilPanel(QFrame):
         s.set_tooltip('Momentum')
 
         def f2():
+
             def f(r):
                 self.pupil.set_mask2d_mul(r)
 
@@ -1172,6 +1192,7 @@ class PupilPanel(QFrame):
         self.group_2d = g
 
         def f():
+
             def f():
                 c.setChecked(self.pupil.mask2d_on)
                 s.block()
@@ -1187,6 +1208,7 @@ class PupilPanel(QFrame):
         g = QGroupBox('3D STED')
 
         def update_radius(slider, what):
+
             def f(r):
                 slider.setValue(int(r * 100))
                 what(r)
@@ -1194,6 +1216,7 @@ class PupilPanel(QFrame):
             return f
 
         def update_spinbox(s):
+
             def f(t):
                 s.setValue(t / 100)
 
@@ -1281,6 +1304,7 @@ class PupilPanel(QFrame):
         le.setValidator(val)
 
         def f():
+
             def f():
                 try:
                     ival = int(le.text())
@@ -1299,6 +1323,7 @@ class PupilPanel(QFrame):
         self.group_grid = g
 
         def f():
+
             def f():
                 c.setChecked(self.pupil.align_grid_on)
                 le.setText(str(self.pupil.align_grid_pitch))
@@ -1335,6 +1360,7 @@ class PupilPanel(QFrame):
         toplay.addWidget(reset, 0, 4)
 
         def plotf():
+
             def f():
                 self.parent.mutex.lock()
                 p = PlotCoeffs()
@@ -1354,6 +1380,7 @@ class PupilPanel(QFrame):
         self.zernike_rows = []
 
         def make_hand_slider(ind):
+
             def f(r):
                 self.pupil.aberration[ind, 0] = r
                 self.pupil.set_aberration(self.pupil.aberration)
@@ -1365,6 +1392,7 @@ class PupilPanel(QFrame):
             return f
 
         def make_hand_lab(le, i):
+
             def f():
                 self.pupil.zernike_labels[str(i)] = le.text()
 
@@ -1395,6 +1423,7 @@ class PupilPanel(QFrame):
                 return ''
 
         def make_update_zernike_rows():
+
             def f(mynk=None):
                 if mynk is None:
                     mynk = self.pupil.rzern.nk
@@ -1488,6 +1517,7 @@ class PupilPanel(QFrame):
         self.group_aberration = top
 
         def f():
+
             def f():
                 self.update_zernike_rows(0)
                 self.update_zernike_rows()
@@ -1509,6 +1539,7 @@ class PupilPanel(QFrame):
         pos.setLayout(poslay)
 
         def make_cb(ind):
+
             def f(r):
                 self.pupil.set_anglexy(r, ind)
 
@@ -1531,6 +1562,7 @@ class PupilPanel(QFrame):
         self.group_grating = pos
 
         def f():
+
             def f():
                 for i, s in enumerate((slider_x, slider_y)):
                     s.block()
@@ -1572,6 +1604,7 @@ h5_prefix = 'slmtools/'
 
 
 class Zernike2Control:
+
     @staticmethod
     def get_default_parameters():
         return {
@@ -1595,6 +1628,7 @@ class Zernike2Control:
 
 
 class Zernike1Control:
+
     @staticmethod
     def get_default_parameters():
         return {
@@ -1760,6 +1794,7 @@ class Zernike1Control:
 
 
 class PupilPositionControl:
+
     @staticmethod
     def get_default_parameters():
         return {
@@ -1880,6 +1915,7 @@ class PupilPositionControl:
 
 
 class SLMControls:
+
     @staticmethod
     def get_default_parameters():
         return {
@@ -1915,6 +1951,7 @@ class SLMControls:
 
 
 class OptionsPanel(QFrame):
+
     def setup(self, pars, name, defaultd, infod):
         self.lines = []
         self.pars = pars
@@ -1955,6 +1992,7 @@ class OptionsPanel(QFrame):
                        self.pars[self.addr_options][self.selection])
 
         def f():
+
             def f(selection):
                 self.clear_all()
                 self.from_dict(selection, self.infod[selection],
@@ -1970,6 +2008,7 @@ class OptionsPanel(QFrame):
                 dict(self.pars[self.addr_options][self.selection]))
 
     def from_dict(self, selection, infod, valuesd):
+
         def get_noll():
             indices = [
                 str(s) for s in get_noll_indices(self.pars[self.addr_options]
@@ -2005,6 +2044,7 @@ class OptionsPanel(QFrame):
             self.lay.addWidget(lab, count, 0)
 
             def fle(k, le, val, type1):
+
                 def f():
                     newval = type1(le.text())
                     self.pars[self.addr_options][selection][k] = type1(
@@ -2016,6 +2056,7 @@ class OptionsPanel(QFrame):
                 return f
 
             def ledisc(w, hand):
+
                 def f():
                     w.editingFinished.disconnect(hand)
 
@@ -2043,6 +2084,7 @@ class OptionsPanel(QFrame):
                 le.setToolTip(desc)
 
                 def make_validator(k, le, type1, bounds):
+
                     def f():
                         old = self.pars[self.addr_options][selection][k]
                         try:
@@ -2170,6 +2212,7 @@ class SLMWindow(QMainWindow):
             self.mutex.unlock()
 
         def make_release_hand():
+
             def f(t):
                 for pp in self.pupilPanels:
                     for _, v in pp.refresh_gui.items():
@@ -2181,6 +2224,7 @@ class SLMWindow(QMainWindow):
             return f
 
         def make_acquire_hand():
+
             def f(t):
                 lock()
 
@@ -2190,12 +2234,14 @@ class SLMWindow(QMainWindow):
         self.sig_acquire.connect(make_acquire_hand())
 
         def make_lock_hand():
+
             def f():
                 lock()
 
             return f
 
         def make_unlock_hand():
+
             def f():
                 unlock()
 
@@ -2219,6 +2265,7 @@ class SLMWindow(QMainWindow):
 
     @staticmethod
     def helper_boolupdate(mycallback, myupdate):
+
         def f(i):
             mycallback(i)
             myupdate()
@@ -2246,6 +2293,7 @@ class SLMWindow(QMainWindow):
         g.setLayout(l1)
 
         def helper_load():
+
             def myf1():
                 fdiag, _ = QFileDialog.getOpenFileName(
                     self,
@@ -2268,6 +2316,7 @@ class SLMWindow(QMainWindow):
             return myf1
 
         def helper_save():
+
             def myf1():
                 fdiag, _ = QFileDialog.getSaveFileName(
                     self,
@@ -2293,7 +2342,9 @@ class SLMWindow(QMainWindow):
             return myf1
 
         def helper_console():
+
             def end():
+
                 def f(t):
                     self.sig_release.emit(())
                     self.unlock_gui()
@@ -2309,6 +2360,7 @@ class SLMWindow(QMainWindow):
             return start
 
         def helper_holo():
+
             def myf1():
                 fdiag, _ = QFileDialog.getSaveFileName(
                     self,
@@ -2364,7 +2416,9 @@ class SLMWindow(QMainWindow):
         }
 
     def make_flat_tab(self):
+
         def helper_load_flat1():
+
             def myf1():
                 fdiag, _ = QFileDialog.getOpenFileName(
                     self,
@@ -2388,6 +2442,7 @@ class SLMWindow(QMainWindow):
         g.setLayout(l1)
 
         def f():
+
             def f():
                 cboxlf.setChecked(self.slm.flat_on)
 
@@ -2397,7 +2452,9 @@ class SLMWindow(QMainWindow):
         return g
 
     def make_geometry(self):
+
         def handle_geometry(ind, le):
+
             def f():
                 try:
                     ival = int(le.text())
@@ -2431,6 +2488,7 @@ class SLMWindow(QMainWindow):
             les.append(le)
 
         def f():
+
             def t():
                 return self.slm.hologram_geometry
 
@@ -2457,6 +2515,7 @@ class SLMWindow(QMainWindow):
         lewrap.setValidator(val)
 
         def handle_wrap(lewrap1):
+
             def f():
                 try:
                     ival = int(lewrap1.text())
@@ -2477,6 +2536,7 @@ class SLMWindow(QMainWindow):
         g.setLayout(l1)
 
         def f():
+
             def f():
                 lewrap.setText(str(self.slm.wrap_value))
 
@@ -2498,6 +2558,7 @@ class SLMWindow(QMainWindow):
         l1.addWidget(btoggle, 1, 0)
 
         def fp():
+
             def f():
                 ind = self.pupilsTab.count()
                 p = self.slm.add_pupil()
@@ -2508,6 +2569,7 @@ class SLMWindow(QMainWindow):
             return f
 
         def fm():
+
             def f():
                 if len(self.slm.pupils) == 1:
                     return
@@ -2518,6 +2580,7 @@ class SLMWindow(QMainWindow):
             return f
 
         def ft():
+
             def f():
                 for p, pp in zip(self.slm.pupils, self.pupilPanels):
                     p.set_enabled(not p.enabled, update=False)
@@ -2539,6 +2602,7 @@ class SLMWindow(QMainWindow):
         l1 = QGridLayout()
 
         def make_cb(ind):
+
             def f(r):
                 self.slm.set_grating(r, ind)
 
@@ -2559,6 +2623,7 @@ class SLMWindow(QMainWindow):
         slider_y.add_to_layout(l1, 1, 1)
 
         def f():
+
             def f():
                 for i, s in enumerate((slider_x, slider_y)):
                     s.block()
@@ -2661,6 +2726,7 @@ class Console(QDialog):
         self.show()
 
         def stop():
+
             def f():
                 "Close the console"
                 self.sig_close_console.emit((None, ))
@@ -2670,6 +2736,7 @@ class Console(QDialog):
             return f
 
         def draw():
+
             def f():
                 "Update the SLM hologram"
                 self.slmwin.app.processEvents()

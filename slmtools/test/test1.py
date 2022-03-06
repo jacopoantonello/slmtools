@@ -11,6 +11,7 @@ app = QApplication(sys.argv)  # noqa
 
 
 class TestHologram(unittest.TestCase):
+
     def test1(self):
         r1, r2 = run_tests(False)
         self.assertTrue(r1)
